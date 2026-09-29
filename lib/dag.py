@@ -24,14 +24,13 @@ import numpy as np
 
 
 class NodeKind(str, Enum):
-    SOURCE        = "source"          # raw physics / rigidbody emitter
-    FORCE         = "force"           # collision, rolling, sliding, ...
-    NOISE_ENH     = "noise_enhance"   # procedural noise overlay
-    MODAL         = "modal"           # modal displacement
-    MODAL_DIFFUSE = "modal_diffuse"   # 3D modal diffusion
-    BAND          = "band"            # signal for multi band data
-    AMBISONIC     = "ambisonic"       # acoustic render output
-    MIC           = "microphone"
+    """
+    Defines the fundamental type of a node in the DAG.
+    The specific data type (e.g., 'force', 'modal') is stored in the node's meta.
+    """
+    SOURCE = "source"          # Raw data, e.g., from a physics or rigidbody solver
+    PROCESSED = "processed"    # Data that has been transformed, e.g., noise-enhanced
+    OUTPUT = "output"          # Final rendered output, e.g., ambisonic
 
 
 @dataclass
@@ -46,11 +45,35 @@ class EdgeTransform:
 class DAGNode:
     kind: NodeKind
     name: str
-    shape: tuple[int, ...]          # full ND shape at this node
+    shape: tuple[int,, ...]          # full ND shape at this node
     dtype: np.dtype
     parent_edges: list[tuple["DAGNode", "EdgeTransform"]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
-    def add_parent(self, parent: "DAGNode", transform: EdgeTransform):
+    def add_parent(self, parent: "DAGNode", transform: "EdgeTransform"):
         self.parent_edges.append((parent, transform))
         return self
+
+
+@dataclass
+class TrackDescriptor:
+    """
+    A descriptor for a group of related tracks that can be processed by the StorageEngine.
+    This is the primary way to register a new data type with the system.
+    """
+    # A unique name for this track group, e.g., "physics_forces", "rigidbody_modal"
+    name: str
+    
+    # The kind of node this descriptor produces.
+    node_kind: NodeKind
+    
+    # The names of the individual tracks in this group.
+    # The order is important and will be used for indexing.
+    track_names: List[str]
+    
+    # A factory function that creates the EdgeTransform for this track group.
+    # It receives the entity_manager and the node being processed as arguments.
+    transform_factory: Callable[['EntityManager', DAGNode], EdgeTransform]
+
+    # Optional metadata about the descriptor.
+    meta: dict[str, Any] = field(default_factory=dict)

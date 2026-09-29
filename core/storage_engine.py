@@ -23,10 +23,12 @@ from typing import Iterable, Dict, List, Tuple
 import numpy as np
 
 from pbrAudioCommon import EntityManager, debug_print, set_debug, set_debug_prefix
+
 from ..lib.dag import DAGNode, EdgeTransform
 from ..lib.base import ArrayBackend, ArrayHandle
 from ..lib.blosc2_backend import Blosc2Backend
 from ..lib.zarr_backend import ZarrBackend
+from ..lib.graph_builder import GraphBuilder
 
 @dataclass
 class MaterializedNode:
@@ -94,6 +96,16 @@ class StorageEngine:
         if name not in self._mats:
             raise KeyError(f"Node '{name}' has not been materialized.")
         return self._mats[name].handle.read(slices)
+
+    def build_and_process(self, obj_idx: int, duration_s: float):
+        """
+        High-level method to build the graph for an object and process it.
+        """
+        builder = GraphBuilder(self.entity_manager)
+        root_node = builder.build_graph(obj_idx, duration_s)
+        self.materialize(root_node)
+        self.process_graph()
+        return root_node
 
     def process_graph(self) -> None:
         """
