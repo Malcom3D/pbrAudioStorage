@@ -19,7 +19,7 @@
 import zarr
 import zarrs
 import numpy as np
-from .base import ArrayBackend, ArrayHandle
+from ..lib.base import ArrayBackend, ArrayHandle
 
 zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 

@@ -21,10 +21,9 @@ from dataclasses import dataclass, field
 from typing import Iterable
 import numpy as np
 
-from .dag import DAGNode, NodeKind, EdgeTransform
-from .backends.base import ArrayBackend, ArrayHandle
-from .backends.blosc2_backend import Blosc2Backend
-
+from ..lib.dag import DAGNode, NodeKind, EdgeTransform
+from ..lib.base import ArrayBackend, ArrayHandle
+from ..lib.blosc2_backend import Blosc2Backend
 
 @dataclass
 class MaterializedNode:
@@ -33,39 +32,25 @@ class MaterializedNode:
     children: list["MaterializedNode"] = field(default_factory=list)
 
 
+@dataclass
 class StorageEngine:
     """
     Materializes a DAG of DAGNodes into a chosen backend and exposes
     non-destructive, JIT-accelerated processing over the graph.
     """
+    root_path: str,
+    backend: ArrayBackend | None = None,
+    default_dtype=np.float32,
+    _mats: dict[str, MaterializedNode] = {}
 
-    def __init__(
-        self,
-        root_path: str,
-        backend: ArrayBackend | None = None,
-        default_dtype=np.float32,
-    ):
-        self.root = root_path
-        self.backend = backend or Blosc2Backend(root_path)
-        self.default_dtype = np.dtype(default_dtype)
-        self._mats: dict[str, MaterializedNode] = {}
-
-    # ---------- public API ----------
-
-    def materialize(self, root: DAGNode) -> MaterializedNode:
-        """Walk DAG topologically, allocate each node's NDArray."""
+    def materialize(self, root: DAGNode, resume=True):
         for node in self._toposort(root):
-            handle = self.backend.create(
-                name=self._sanitize(node.name),
-                shape=node.shape,
-                dtype=node.dtype or self.default_dtype,
-            )
-            mat = MaterializedNode(node=node, handle=handle)
-            self._mats[node.name] = mat
-            for p in node.parents:
-                if p.name in self._mats:
-                    self._mats[p.name].children.append(mat)
-        return self._mats[root.name]
+            key = self._sanitize(node.name)
+            if resume and (h := self.backend.try_open(key, node.shape)):
+                self._mats[node.name] = MaterializedNode(node, h)
+                continue
+            handle = self.backend.create(name=key, shape=node.shape, dtype=node.dtype, cparams=node.meta.get("cparams"))
+        self._mats[node.name] = MaterializedNode(node, handle)
 
     def write_node(self, name: str, data: np.ndarray, slices=...) -> None:
         self._mats[name].handle.write(data, slices)
@@ -80,17 +65,18 @@ class StorageEngine:
         """
         mat = self._mats[name]
         node = mat.node
-        if not node.parents:
+        if not node.parent_edges:
             return
-        parent_mat = self._mats[node.parents[0].name]
-        tr = node.transform
-        if tr is None or tr.op is None:
-            return
-
-        if self._is_jit_expressible(tr):
-            mat.handle.apply_jit(tr.name, expr=tr.params["expr"], **tr.params)
+        if len(node.parent_edges) == 1:
+            parent, tr = node.parent_edges[0]
+            self._apply_single(self._mats[parent.name], mat, tr)
         else:
-            self._chunked_apply(parent_mat, mat, tr)
+            self._apply_combine([(self._mats[p.name], tr) for p, tr in node.parent_edges], mat)
+
+#        if self._is_jit_expressible(tr):
+#            mat.handle.apply_jit(tr.name, expr=tr.params["expr"], **tr.params)
+#        else:
+#            self._chunked_apply(parent_mat, mat, tr)
 
     def pipeline(self, names: Iterable[str]) -> None:
         """Apply transforms in the order given (topological)."""
@@ -124,11 +110,10 @@ class StorageEngine:
         return out
 
     def _is_jit_expressible(self, tr: EdgeTransform) -> bool:
-        return "expr" in tr.params
+        if tr is not None and tr.params is not None:
+            return "expr" in tr.params
 
-    def _chunked_apply(self, parent_mat: MaterializedNode,
-                       child_mat: MaterializedNode,
-                       tr: EdgeTransform) -> None:
+    def _chunked_apply(self, parent_mat: MaterializedNode, child_mat: MaterializedNode, tr: EdgeTransform) -> None:
         """Chunk along the time axis (last dim) to keep memory bounded."""
         chunk = 1 << 16  # 65536 samples
         n = parent_mat.handle.shape[-1]
