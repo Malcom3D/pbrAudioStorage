@@ -45,7 +45,7 @@ class EdgeTransform:
 class DAGNode:
     kind: NodeKind
     name: str
-    shape: tuple[int,, ...]          # full ND shape at this node
+    shape: tuple[int, ...]          # full ND shape at this node
     dtype: np.dtype
     parent_edges: list[tuple["DAGNode", "EdgeTransform"]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
