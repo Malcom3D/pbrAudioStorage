@@ -53,7 +53,7 @@ class StorageEngine:
         set_debug_prefix(self.__class__.__name__)
 
         storage_config = config.storage
-        self.root_path = storage_config.cache_path
+        self.root_path = storage_config.root_path
         self.chunk_size = storage_config.chunk_size_samples
 
         if self.backend is None:
