@@ -29,7 +29,7 @@ class NodeKind(str, Enum):
     NOISE_ENH     = "noise_enhance"   # procedural noise overlay
     MODAL         = "modal"           # modal displacement
     MODAL_DIFFUSE = "modal_diffuse"   # 3D modal diffusion
-    BAND          = "band"            # N-band filterbank split
+    BAND          = "band"            # signal for multi band data
     AMBISONIC     = "ambisonic"       # acoustic render output
     MIC           = "microphone"
 
