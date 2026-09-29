@@ -21,6 +21,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Iterable, Dict, List, Tuple
 import numpy as np
+import blosc2
 
 from pbrAudioCommon import EntityManager, debug_print, set_debug, set_debug_prefix
 
@@ -51,7 +52,7 @@ class StorageEngine:
         set_debug(config.system.debug)
         set_debug_prefix(self.__class__.__name__)
 
-        storage_config = config.system.storage
+        storage_config = config.storage
         self.root_path = storage_config.cache_path
         self.chunk_size = storage_config.chunk_size_samples
 
