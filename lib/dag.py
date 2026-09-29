@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple, List
 from enum import Enum
 import numpy as np
 

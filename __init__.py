@@ -16,7 +16,7 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 __author__ = "Malcom3D"
 __description__ = "High performance per-object/per-phase Multitrack RAW Audio Data Storage solution"
 
@@ -27,7 +27,21 @@ decimals = 18
 np.set_printoptions(precision=decimals, floatmode='fixed', threshold=np.inf)
 
 from .core.storage_engine import StorageEngine
+from .lib.dag import DAGNode, NodeKind, EdgeTransform
+from .lib.builder import GraphBuilder
+from .lib.base import ArrayBackend, ArrayHandle
+from .lib.blosc2_backend import Blosc2Backend
+from .lib.zarr_backend import ZarrBackend
 
 __all__ = [
     'StorageEngine',
+    'DAGNode',
+    'NodeKind',
+    'EdgeTransform',
+    'GraphBuilder',
+    'ArrayBackend',
+    'ArrayHandle',
+    'Blosc2Backend',
+    'ZarrBackend',
 ]
+

@@ -17,25 +17,43 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from abc import ABC, abstractmethod
+from typing import Any, Tuple
 import numpy as np
 
 class ArrayHandle(ABC):
+    """Abstract base class for a handle to a persistent array."""
     name: str
-    shape: tuple
+    shape: Tuple[int, ...]
     dtype: np.dtype
 
     @abstractmethod
-    def write(self, data: np.ndarray, slices=...) -> None: ...
+    def write(self, data: np.ndarray, slices: Any = ...) -> None:
+        """Write data to the array."""
+        ...
 
     @abstractmethod
-    def read(self, slices=...) -> np.ndarray: ...
+    def read(self, slices: Any = ...) -> np.ndarray:
+        """Read data from the array."""
+        ...
 
     @abstractmethod
-    def apply_jit(self, op_name: str, **params) -> None: ...
+    def apply_jit(self, expr: str, **params: Any) -> None:
+        """Apply a JIT-compiled expression to the array."""
+        ...
 
 class ArrayBackend(ABC):
+    """Abstract base class for a storage backend."""
     @abstractmethod
-    def create(self, name: str, shape, dtype, **kw) -> ArrayHandle: ...
+    def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, **kw: Any) -> ArrayHandle:
+        """Create a new persistent array."""
+        ...
 
     @abstractmethod
-    def open(self, name: str) -> ArrayHandle: ...
+    def open(self, name: str) -> ArrayHandle:
+        """Open an existing persistent array."""
+        ...
+
+    @abstractmethod
+    def try_open(self, name: str, expected_shape: Tuple[int, ...]) -> ArrayHandle | None:
+        """Try to open an array, returning returning None if it doesn't exist or has the wrong shape."""
+        ...
