@@ -18,7 +18,7 @@
 
 import blosc2
 import numpy as np
-from .base import ArrayBackend, ArrayHandle
+from ..lib.base import ArrayBackend, ArrayHandle
 
 class Blosc2Handle(ArrayHandle):
     def __init__(self, arr: blosc2.NDArray):
@@ -67,6 +67,15 @@ class Blosc2Backend(ArrayBackend):
 
     def open(self, name):
         arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="r")
+        return Blosc2Handle(arr)
+
+    def try_open(self, name, expected_shape):
+        path = f"{self.root}/{name}.b2nd"
+        if not os.path.exists(path):
+            return None
+        arr = blosc2.open(path, mode="a")
+        if tuple(arr.shape) != tuple(expected_shape):
+            return None  # stale, will be recreated
         return Blosc2Handle(arr)
 
     @staticmethod

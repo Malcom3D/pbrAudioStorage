@@ -48,11 +48,9 @@ class DAGNode:
     name: str
     shape: tuple[int, ...]          # full ND shape at this node
     dtype: np.dtype
-    parents: list["DAGNode"] = field(default_factory=list)
-    transform: Optional[EdgeTransform] = None
+    parent_edges: list[tuple["DAGNode", "EdgeTransform"]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
     def add_parent(self, parent: "DAGNode", transform: EdgeTransform):
-        self.parents.append(parent)
-        self.transform = transform   # single transform per edge for now
+        self.parent_edges.append((parent, transform))
         return self

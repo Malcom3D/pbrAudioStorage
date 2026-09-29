@@ -20,8 +20,8 @@
 from __future__ import annotations
 import numpy as np
 
-from .dag import DAGNode, NodeKind, EdgeTransform
-
+from ..lib.dag import DAGNode, NodeKind, EdgeTransform
+from pbrAudioCommon import LinkwitzRileyFilter
 
 # Canonical track layouts — keep these in one place so physicsSolver,
 # rigidBody, and StorageEngine all agree.
@@ -45,7 +45,8 @@ class GraphBuilder:
         self.fps = cfg.system.fps
         self.fps_base = cfg.system.fps_base
         self.subframes = cfg.system.subframes
-        self.bands = int(cfg.system.bands_per_octave) or 1
+        frequency_bands = self.em.get('frequency_bands')
+        self.bands = len(frequency_bands.get_bands())
         self.dtype = np.dtype(np.float32)  # or read from config
 
     # ---------- physics graph ----------
