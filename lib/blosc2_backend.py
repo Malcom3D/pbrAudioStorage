@@ -16,47 +16,50 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import blosc2
 import numpy as np
-from ..lib.base import ArrayBackend, ArrayHandle
+from typing import Any, Tuple
+
+from .base import ArrayBackend, ArrayHandle
 
 class Blosc2Handle(ArrayHandle):
+    """Handle for a Blosc2 NDArray."""
     def __init__(self, arr: blosc2.NDArray):
         self._arr = arr
         self.name = arr.name or ""
         self.shape = arr.shape
         self.dtype = np.dtype(arr.dtype)
 
-    def write(self, data: np.ndarray, slices=...) -> None:
+    def write(self, data: np.ndarray, slices: Any = ...) -> None:
         self._arr[slices] = data
 
-    def read(self, slices=...) -> np.ndarray:
+    def read(self, slices: Any = ...) -> np.ndarray:
         return self._arr[slices]
 
-    def apply_jit(self, op_name: str, **params) -> None:
-        # Blosc2 JIT via blosc2.jit — compiled expression applied lazily
-        expr = params.pop("expr", None)
-        if expr is None:
-            raise ValueError("apply_jit requires 'expr'")
+    def apply_jit(self, expr: str, **params: Any) -> None:
+        """Apply a JIT-compiled expression to the array in-place."""
+        # blosc2.jit returns a new lazy array, so we reassign
         self._arr = blosc2.jit(expr, self._arr, **params)
 
 class Blosc2Backend(ArrayBackend):
+    """Storage backend using Blosc2 with JIT capabilities."""
     def __init__(self, root_path: str, cparams: dict | None = None):
         self.root = root_path
+        os.makedirs(self.root, exist_ok=True)
         self.cparams = cparams or {
             "codec": blosc2.Codec.ZSTD,
             "clevel": 5,
             "filters": [blosc2.Filter.SHUFFLE],
         }
 
-    def create(self, name, shape, dtype, chunks=None, blocks=None, **kw):
+    def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
         arr = blosc2.empty(
             shape=shape,
             dtype=dtype,
             chunks=chunks,
-            blocks=blocks,
             cparams=self.cparams,
             urlpath=f"{self.root}/{name}.b2nd",
             mode="w",
@@ -65,26 +68,27 @@ class Blosc2Backend(ArrayBackend):
         arr.name = name
         return Blosc2Handle(arr)
 
-    def open(self, name):
-        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="r")
+    def open(self, name: str) -> Blosc2Handle:
+        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a")
         return Blosc2Handle(arr)
 
-    def try_open(self, name, expected_shape):
+    def try_open(self, name: str, expected_shape: Tuple[int, ...]) -> Blosc2Handle | None:
         path = f"{self.root}/{name}.b2nd"
         if not os.path.exists(path):
             return None
         arr = blosc2.open(path, mode="a")
         if tuple(arr.shape) != tuple(expected_shape):
-            return None  # stale, will be recreated
+            return None  # Stale, will be recreated
         return Blosc2Handle(arr)
 
     @staticmethod
-    def _auto_chunks(shape, dtype, target_bytes=1 << 20):
-        """Pick chunk size so a chunk is ~1 MiB."""
+    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype, target_bytes: int = 1 << 20) -> Tuple[int, ...]:
+        """Pick chunk size so a chunk is ~1 MiB, prioritizing the last axis."""
         itemsize = np.dtype(dtype).itemsize
-        # last axis (time) gets full length; earlier axes chunked at 1
+        # Start with full size for the last axis, 1 for others
         chunks = [1] * (len(shape) - 1) + [shape[-1]]
-        # shrink last axis if a single chunk exceeds target
+        
+        # Shrink last axis if a single chunk exceeds target
         while (chunks[-1] * itemsize * int(np.prod(chunks[:-1]))) > target_bytes and chunks[-1] > 1:
             chunks[-1] //= 2
         return tuple(chunks)

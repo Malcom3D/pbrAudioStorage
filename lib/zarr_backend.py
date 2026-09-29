@@ -16,38 +16,41 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import zarr
-import zarrs
 import numpy as np
-from ..lib.base import ArrayBackend, ArrayHandle
+from typing import Any, Tuple
 
-zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+from .base import ArrayBackend, ArrayHandle
 
 class ZarrHandle(ArrayHandle):
-    def __init__(self, arr):
+    """Handle for a Zarr array."""
+    def __init__(self, arr: zarr.Array):
         self._arr = arr
-        self.name = arr.name
+        self.name = os.path.basename(arr.store.path).replace('.zarr', '')
         self.shape = arr.shape
         self.dtype = np.dtype(arr.dtype)
 
-    def write(self, data, slices=...):
+    def write(self, data: np.ndarray, slices: Any = ...) -> None:
         self._arr[slices] = data
 
-    def read(self, slices=...):
+    def read(self, slices: Any = ...) -> np.ndarray:
         return self._arr[slices]
 
-    def apply_jit(self, op_name, **params):
-        raise NotImplementedError("JIT only supported on Blosc2 backend")
-
+    def apply_jit(self, expr: str, **params: Any) -> None:
+        raise NotImplementedError("JIT is only supported on the Blosc2 backend.")
 
 class ZarrBackend(ArrayBackend):
-    def __init__(self, root_path, **store_kw):
+    """Storage backend using Zarr."""
+    def __init__(self, root_path: str, **store_kw: Any):
         self.root = root_path
+        os.makedirs(self.root, exist_ok=True)
         self.store_kw = store_kw
 
-    def create(self, name, shape, dtype, chunks=None, **kw):
+    def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> ZarrHandle:
         if chunks is None:
             chunks = (1,) * (len(shape) - 1) + (shape[-1],)
+        
         z = zarr.open_array(
             store=f"{self.root}/{name}.zarr",
             mode="w",
@@ -58,7 +61,16 @@ class ZarrBackend(ArrayBackend):
         )
         return ZarrHandle(z)
 
-    def open(self, name):
-        z = zarr.open_array(f"{self.root}/{name}.zarr", mode="r")
+    def open(self, name: str) -> ZarrHandle:
+        z = zarr.open_array(f"{self.root}/{name}.zarr", mode="a")
+        return ZarrHandle(z)
+
+    def try_open(self, name: str, expected_shape: Tuple[int, ...]) -> ZarrHandle | None:
+        path = f"{self.root}/{name}.zarr"
+        if not os.path.exists(path):
+            return None
+        z = zarr.open_array(path, mode="a")
+        if z.shape != expected_shape:
+            return None
         return ZarrHandle(z)
 
