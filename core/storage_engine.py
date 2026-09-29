@@ -38,10 +38,10 @@ class StorageEngine:
     Materializes a DAG of DAGNodes into a chosen backend and exposes
     non-destructive, JIT-accelerated processing over the graph.
     """
-    root_path: str,
-    backend: ArrayBackend | None = None,
-    default_dtype=np.float32,
-    _mats: dict[str, MaterializedNode] = {}
+    root_path: str
+    backend: ArrayBackend | None = None
+    default_dtype=np.float32
+    _mats: dict[str, MaterializedNode] = field(default_factory=dict)
 
     def materialize(self, root: DAGNode, resume=True):
         for node in self._toposort(root):
