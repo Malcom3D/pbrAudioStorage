@@ -27,7 +27,7 @@ decimals = 18
 np.set_printoptions(precision=decimals, floatmode='fixed', threshold=np.inf)
 
 from .core.storage_engine import StorageEngine
-from .lib.dag import DAGNode, NodeKind, EdgeTransform
+from .lib.dag import DAGNode, NodeKind, EdgeTransform, TrackDescriptor
 from .lib.graph_builder import GraphBuilder
 from .lib.base import ArrayBackend, ArrayHandle
 from .lib.blosc2_backend import Blosc2Backend
@@ -35,6 +35,7 @@ from .lib.zarr_backend import ZarrBackend
 
 __all__ = [
     'StorageEngine',
+    'TrackDescriptor',
     'DAGNode',
     'NodeKind',
     'EdgeTransform',
