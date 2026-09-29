@@ -64,7 +64,7 @@ class StorageEngine:
             elif storage_config.backend == "zarr":
                 self.backend = ZarrBackend(root_path=self.root_path, **storage_config.zarr_store_kwargs)
             else:
-                raise ValueError(f""Unsupported storage backend: {storage_config.backend}")
+                raise ValueError(f"Unsupported storage backend: {storage_config.backend}")
         
         debug_print(f"StorageEngine initialized with '{storage_config.backend}' backend at '{self.root_path}'")
 
@@ -92,7 +92,7 @@ class StorageEngine:
     def read_node(self, name: str, slices: slice | tuple = ...) -> np.ndarray:
         """Reads data from a materialized node."""
         if name not in self._mats:
-            raise KeyError(f(f"Node '{name}' has not been materialized.")
+            raise KeyError(f"Node '{name}' has not been materialized.")
         return self._mats[name].handle.read(slices)
 
     def process_graph(self) -> None:
