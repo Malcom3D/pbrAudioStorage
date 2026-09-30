@@ -36,7 +36,7 @@ class GraphBuilder:
         config = self.entity_manager.get("config")
         self.sample_rate = int(config.system.sample_rate)
         self.dtype = np.dtype(np.float32) # or np.dtype(np.float64)
-        frequency_bands = self.entity_manager.get("frequency_bands")
+        frequency_bands = self.entity_manager.get("frequencies")
         self.bands = len(frequency_bands.get_bands()) if frequency_bands is not None else 1
 
     def build_graph(self, obj_idx: int, duration_s: float) -> DAGNode:
@@ -81,7 +81,7 @@ class GraphBuilder:
             )
 
             # Get the transform from the descriptor's factory and add the edge
-            transform = descriptor.transform_factory(self.em, source_node)
+            transform = descriptor.transform_factory(self.entity_manager, source_node)
             processed_node.add_parent(source_node, transform)
             
             all_nodes.append(processed_node)
