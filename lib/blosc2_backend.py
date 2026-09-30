@@ -54,7 +54,7 @@ class Blosc2Backend(ArrayBackend):
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
-        self.cparams['tipesize'] = sys.sizeof(dtype())
+        self.cparams['tipesize'] = sys.getsizeof(dtype())
         arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=blosc2.CParams(self.cparams), dparams=blosc2.DParams(self.dparam), urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
         arr.name = name
         return Blosc2Handle(arr)
