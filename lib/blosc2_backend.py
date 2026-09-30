@@ -17,6 +17,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
+import sys
 import blosc2
 import numpy as np
 from typing import Any, Tuple
@@ -47,36 +48,26 @@ class Blosc2Backend(ArrayBackend):
     def __init__(self, root_path: str, cparams: dict | None = None):
         self.root = root_path
         os.makedirs(self.root, exist_ok=True)
-        self.cparams = cparams or {
-            "codec": blosc2.Codec.ZSTD,
-            "clevel": 5,
-            "filters": [blosc2.Filter.SHUFFLE],
-        }
+        self.cparams = cparams or {"codec": blosc2.Codec.LZ4, "clevel": 1, "filters": [blosc2.Filter.SHUFFLE]}
+        self.dparams = {"nthreads": 16)
 
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
-        arr = blosc2.empty(
-            shape=shape,
-            dtype=dtype,
-            chunks=chunks,
-            cparams=self.cparams,
-            urlpath=f"{self.root}/{name}.b2nd",
-            mode="w",
-            **kw,
-        )
+        self.cparams['tipesize'] = sys.sizeof(dtype())
+        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparam, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
         arr.name = name
         return Blosc2Handle(arr)
 
     def open(self, name: str) -> Blosc2Handle:
-        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a")
+        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a",  cparams=self.cparams, dparams=self.dparam)
         return Blosc2Handle(arr)
 
     def try_open(self, name: str, expected_shape: Tuple[int, ...]) -> Blosc2Handle | None:
         path = f"{self.root}/{name}.b2nd"
         if not os.path.exists(path):
             return None
-        arr = blosc2.open(path, mode="a")
+        arr = blosc2.open(path, mode="a", cparams=self.cparams, dparams=self.dparam)
         if tuple(arr.shape) != tuple(expected_shape):
             return None  # Stale, will be recreated
         return Blosc2Handle(arr)
