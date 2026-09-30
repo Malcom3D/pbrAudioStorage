@@ -49,7 +49,7 @@ class Blosc2Backend(ArrayBackend):
         self.root = root_path
         os.makedirs(self.root, exist_ok=True)
         self.cparams = cparams or {"codec": blosc2.Codec.LZ4, "clevel": 1, "filters": [blosc2.Filter.SHUFFLE]}
-        self.dparams = {"nthreads": 16)
+        self.dparams = {"nthreads": 16}
 
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
