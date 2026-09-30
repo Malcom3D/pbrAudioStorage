@@ -61,7 +61,7 @@ class StorageEngine:
                 cparams = {
                     "codec": getattr(blosc2, f"Codec.{storage_config.blosc2_codec.upper()}", blosc2.Codec.ZSTD),
                     "clevel": storage_config.blosc2_clevel,
-                    "filters": [getattr(blosc2, f"Filter.{f.upper()}") for f in storage_config.blosc2_filters],
+                    "filters": [f"blosc2.Filter.{f.upper()}" for f in storage_config.blosc2_filters],
                 }
                 self.backend = Blosc2Backend(root_path=self.root_path, cparams=cparams)
             elif storage_config.backend == "zarr":
