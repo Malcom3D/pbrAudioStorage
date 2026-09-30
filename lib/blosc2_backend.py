@@ -45,17 +45,17 @@ class Blosc2Handle(ArrayHandle):
 
 class Blosc2Backend(ArrayBackend):
     """Storage backend using Blosc2 with JIT capabilities."""
-    def __init__(self, root_path: str, cparams: dict | None = None):
+    def __init__(self, root_path: str, cparams: dict | None = None, dparams_nthreads: int = 16):
         self.root = root_path
         os.makedirs(self.root, exist_ok=True)
         self.cparams = cparams or {"codec": blosc2.Codec.LZ4, "clevel": 1, "filters": [blosc2.Filter.SHUFFLE]}
-        self.dparams = {"nthreads": 16}
+        self.dparams = blosc2.DParams(nthreads=dparams_nthreads)
 
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
         self.cparams['tipesize'] = sys.getsizeof(dtype.type())
-        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=blosc2.CParams(self.cparams), dparams=blosc2.DParams(self.dparam), urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
+        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=blosc2.CParams(self.cparams), dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
         arr.name = name
         return Blosc2Handle(arr)
 
