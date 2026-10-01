@@ -59,7 +59,7 @@ class StorageEngine:
         if self.backend is None:
             if storage_config.backend == "blosc2":
                 cparams = {
-                    "codec": eval(f"blosc2.Codec.{storage_config.blosc2_codec.upper()}"), blosc2.Codec.ZSTD),
+                    "codec": eval(f"blosc2.Codec.{storage_config.blosc2_codec.upper()}"),
                     "clevel": storage_config.blosc2_clevel,
                     "nthreads": config.storage.blosc2_cparams_threads,
                     "filters": [eval(f"blosc2.Filter.{f.upper()}") for f in storage_config.blosc2_filters],
