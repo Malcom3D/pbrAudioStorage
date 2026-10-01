@@ -86,7 +86,7 @@ class Blosc2Backend(ArrayBackend):
         return Blosc2Handle(arr)
 
     @staticmethod
-    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype, target_bytes: int = 1 << << 20) -> Tuple[int, ...]:
+    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype, target_bytes: int = 1 << 20) -> Tuple[int, ...]:
         """Pick chunk size so a chunk is ~1 MiB, prioritizing the last axis."""
         itemsize = np.dtype(dtype).itemsize
 
