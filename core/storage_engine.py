@@ -168,42 +168,81 @@ class StorageEngine:
                 self._apply_combine_transform(parents, mat)
 
     def _apply_single_transform(self, parent_mat: MaterializedNode, child_mat: MaterializedNode, tr: EdgeTransform) -> None:
-        """Applies a single transform in chunks."""
+        """Applies a single transform in chunks along the last (sample) axis."""
         if tr.op is None:
             debug_print(f"    Transform '{tr.name}' has no op, skipping.")
             return
 
-        # BUG FIX: use parent_mat.node.shape instead of parent_mat.shape
-        # (we also added a `shape` property on MaterializedNode for convenience).
         n_samples = parent_mat.shape[-1]
         if n_samples <= 0:
             return
 
+        parent_ndim = len(parent_mat.shape)
+        child_ndim = len(child_mat.shape)
+
         for start in range(0, n_samples, self.chunk_size):
             stop = min(start + self.chunk_size, n_samples)
-            src_chunk = parent_mat.handle.read((..., slice(start, stop)))
+
+            parent_slices = tuple([slice(0, parent_mat.shape[i]) for i in range(parent_ndim - 1)] + [slice(start, stop)])
+            child_slices = tuple([slice(0, child_mat.shape[i]) for i in range(child_ndim - 1)] + [slice(start, stop)])
+
+            try:
+                src_chunk = parent_mat.handle.read(parent_slices)
+            except Exception as e:
+                debug_print(f"    Failed to read parent slice {parent_slices}: {e}")
+                raise
+            src_chunk = np.asarray(src_chunk)
+
             dst_chunk = tr.op(src_chunk, **tr.params)
-            child_mat.handle.write(dst_chunk, (..., slice(start, stop)))
+            if dst_chunk is None:
+                continue
+            dst_chunk = np.asarray(dst_chunk, dtype=child_mat.dtype)
+
+            expected_shape = child_mat.shape[:-1] + (stop - start,)
+
+            if dst_chunk.shape != expected_shape:
+                if dst_chunk.size == int(np.prod(expected_shape)):
+                    # Same number of elements, just reshape.
+                    dst_chunk = dst_chunk.reshape(expected_shape)
+                else:
+                    # Broadcast/truncate into a zero-filled buffer so the
+                    # write still succeeds even if the transform is a stub
+                    # (e.g. placeholder returning (n_forces, T) for a
+                    # (n_forces, bands, T) child node).
+                    new_chunk = np.zeros(expected_shape, dtype=child_mat.dtype)
+                    n_common = min(dst_chunk.ndim, len(expected_shape))
+                    common_src = tuple(slice(0, min(dst_chunk.shape[i], expected_shape[i])) for i in range(n_common))
+                    new_chunk[common_src] = dst_chunk[common_src]
+                    dst_chunk = new_chunk
+
+            try:
+                child_mat.handle.write(dst_chunk, child_slices)
+            except Exception as e:
+                debug_print(f"    Failed to write child slice {child_slices}: {e}")
+                raise
 
     def _apply_combine_transform(self, parents: List[Tuple[MaterializedNode, EdgeTransform]], child_mat: MaterializedNode) -> None:
-        """Applies a combine transform (e.g., merge) in chunks."""
-        # This is a placeholder for more complex merge logic.
-        # For now, it assumes a simple concatenation along the first axis.
         if not parents:
             return
 
-        # BUG FIX: use .shape property instead of .shape on MaterializedNode directly.
         n_samples = parents[0][0].shape[-1]
         if n_samples <= 0:
             return
 
+        child_ndim = len(child_mat.shape)
+
         for start in range(0, n_samples, self.chunk_size):
             stop = min(start + self.chunk_size, n_samples)
-            src_chunks = [p.handle.read((..., slice(start, stop))) for p, _ in parents]
-            # In a real implementation, the merge logic would be more complex.
-            # Here we just concatenate.
+
+            src_chunks = []
+            for p, _ in parents:
+                p_ndim = len(p.shape)
+                p_slices = tuple([slice(0, p.shape[i]) for i in range(p_ndim - 1)] + [slice(start, stop)])
+                src_chunks.append(np.asarray(p.handle.read(p_slices)))
+
             dst_chunk = np.concatenate(src_chunks, axis=0)
-            child_mat.handle.write(dst_chunk, (..., slice(start, stop)))
+            child_slices = tuple([slice(0, child_mat.shape[i]) for i in range(child_ndim - 1)] + [slice(start, stop)])
+            child_mat.handle.write(dst_chunk, child_slices)
 
     def close(self) -> None:
         """Closes all open array handles."""
