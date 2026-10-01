@@ -28,7 +28,7 @@ class Blosc2Handle(ArrayHandle):
     """Handle for a Blosc2 NDArray."""
     def __init__(self, arr: blosc2.NDArray):
         self._arr = arr
-#        self.name = arr.name or ""
+        self.name = arr.name if hasattr(arr, "name") else ""
         self.shape = arr.shape
         self.dtype = np.dtype(arr.dtype)
 
@@ -75,9 +75,10 @@ class Blosc2Backend(ArrayBackend):
             chunks = self._auto_chunks(shape, dtype)
 
         arr = blosc2.zeros(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
+        return Blosc2Handle(arr)
 
     def open(self, name: str) -> Blosc2Handle:
-        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a", cparams=self.cparams, dparams=self.dparams)
+        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a")
         return Blosc2Handle(arr)
 
     def try_open(self, name: str, expected_shape: tuple[int, ...]) -> Blosc2Handle | None:
@@ -85,7 +86,7 @@ class Blosc2Backend(ArrayBackend):
         if not os.path.exists(path):
             return None
         try:
-            arr = blosc2.open(path, mode="a", cparams=self.cparams, dparams=self.dparams)
+            arr = blosc2.open(path, mode="a")
         except Exception:
             return None
         if tuple(arr.shape) != tuple(expected_shape):
@@ -101,8 +102,7 @@ class Blosc2Backend(ArrayBackend):
             return None
         return Blosc2Handle(arr)
 
-    @staticmethod
-    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype) -> Tuple[int, ...]:
+    def _auto_chunks(self, shape: Tuple[int, ...], dtype: np.dtype) -> Tuple[int, ...]:
         """
         Pick chunk sizes.
         """

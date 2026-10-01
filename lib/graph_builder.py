@@ -44,7 +44,8 @@ class GraphBuilder:
         Builds a complete DAG for a single object by iterating over all
         registered track descriptors.
         """
-        n_samples = int(self.sample_rate * duration_s)
+        n_samples = int(self.sample_rate * duration_s) + 1
+        n_samples = 1 if n_samples  < 1 else n_samples
         all_nodes: List[DAGNode] = []
 
         # Iterate over every registered descriptor to build its part of the graph
@@ -92,7 +93,7 @@ class GraphBuilder:
 
         # For now, we assume a single final node.
         # If multiple descriptors are registered, we'd need a merge node.
-               # Let's create a merge node if there's more than one.
+        # Let's create a merge node if there's more than one.
         if len(all_nodes) == 1:
             return all_nodes[0]
         else:

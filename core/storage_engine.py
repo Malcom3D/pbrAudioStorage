@@ -105,6 +105,9 @@ class StorageEngine:
                 debug_print(f"  Creating new array for node: {node.name} (shape: {node.shape})")
                 handle = self.backend.create(name=key, shape=node.shape, dtype=node.dtype)
 
+            if handle is None:
+                raise RuntimeError(f"Backend {type(self.backend).__name__} returned None for node '{node.name}' (shape={node.shape}, dtype={node.dtype})")
+
             self._mats[node.name] = MaterializedNode(node, handle)
 
     def write_node(self, name: str, data: np.ndarray, slices: slice | tuple = ...) -> None:
