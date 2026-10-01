@@ -44,7 +44,7 @@ class GraphBuilder:
         Builds a complete DAG for a single object by iterating over all
         registered track descriptors.
         """
-        n_samples = int(self.sample_rate * duration_s) + 1
+        n_samples = int(self.sample_rate * duration_s)
         n_samples = 1 if n_samples  < 1 else n_samples
         all_nodes: List[DAGNode] = []
 
