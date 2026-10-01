@@ -38,7 +38,7 @@ class ZarrHandle(ArrayHandle):
         return self._arr[slices]
 
     def apply_jit(self, expr: str, **params: Any) -> None:
-        raise NotImplementedError("JIT is only supported on the Blosc2 backend.")
+        raise NotImplementedError("JIT is only supported on the Zarr backend.")
 
 class ZarrBackend(ArrayBackend):
     """Storage backend using Zarr."""
