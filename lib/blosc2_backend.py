@@ -28,7 +28,7 @@ class Blosc2Handle(ArrayHandle):
     """Handle for a Blosc2 NDArray."""
     def __init__(self, arr: blosc2.NDArray):
         self._arr = arr
-        self.name = arr.name or ""
+#        self.name = arr.name or ""
         self.shape = arr.shape
         self.dtype = np.dtype(arr.dtype)
 
@@ -48,26 +48,37 @@ class Blosc2Backend(ArrayBackend):
     def __init__(self, root_path: str, cparams: dict | None = None, dparams_nthreads: int = 16):
         self.root = root_path
         os.makedirs(self.root, exist_ok=True)
-        self.cparams = cparams or {"codec": blosc2.Codec.LZ4, "clevel": 1, "filters": [blosc2.Filter.SHUFFLE]}
+        processed_cparams = {}
+        if cparams:
+            for key, value in cparams.items():
+                if key == "codec" and isinstance(value, blosc2.Codec):
+                    processed_cparams[key] = value.value
+                elif key == "filters" and isinstance(value, list):
+                    processed_cparams[key] = [
+                        f.value if isinstance(f, blosc2.Filter) else f for f in value
+                    ]
+                else:
+                    processed_cparams[key] = value
+        self.cparams = processed_cparams or {"codec": blosc2.Codec.LZ4.value, "clevel": 1, "filters": [blosc2.Filter.SHUFFLE.value]}
         self.dparams = blosc2.DParams(nthreads=dparams_nthreads)
 
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
-        self.cparams['tipesize'] = sys.getsizeof(dtype.type())
-        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=blosc2.CParams(self.cparams), dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
+#        self.cparams['typesize'] = sys.getsizeof(dtype.type())
+        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
         arr.name = name
         return Blosc2Handle(arr)
 
     def open(self, name: str) -> Blosc2Handle:
-        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a", cparams=blosc2.CParams(self.cparams), dparams=blosc2.DParams(self.dparam))
+        arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a", cparams=self.cparams, dparams=self.dparams)
         return Blosc2Handle(arr)
 
     def try_open(self, name: str, expected_shape: Tuple[int, ...]) -> Blosc2Handle | None:
         path = f"{self.root}/{name}.b2nd"
         if not os.path.exists(path):
             return None
-        arr = blosc2.open(path, mode="a", cparams=blosc2.CParams(self.cparams), dparams=blosc2.DParams(self.dparam))
+        arr = blosc2.open(path, mode="a", cparams=self.cparams, dparams=self.dparams)
         if tuple(arr.shape) != tuple(expected_shape):
             return None  # Stale, will be recreated
         return Blosc2Handle(arr)
