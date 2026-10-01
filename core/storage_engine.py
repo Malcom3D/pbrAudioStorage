@@ -115,13 +115,8 @@ class StorageEngine:
         transforms from parents to children.
         """
         debug_print("Processing DAG...")
-        # Get the root node from the materialized nodes (a bit of a hack)
-        if not self._mats:
-            return
-        root_node = next(iter(self._mats.values())).node
-        for node_name in [n.name for n in self._toposort(root_node)]:
-            if node_name in self._mats:
-                self.apply_transform(node_name)
+        for name in list(self._mats.keys()):
+            self.apply_transform(name)
 
     def apply_transform(self, name: str) -> None:
         """
@@ -134,7 +129,7 @@ class StorageEngine:
         debug_print(f"  Applying transform for node: {name}")
         if len(mat.node.parent_edges) == 1:
             parent_node, tr = mat.node.parent_edges[0]
-            parent_mat = self._mats[parent_node.name.name]
+            parent_mat = self._mats[parent_node.name]
             self._apply_single_transform(parent_mat, mat, tr)
         else:
             parents = [(self._mats[p.name], tr) for p, tr in mat.node.parent_edges]
