@@ -68,7 +68,8 @@ class Blosc2Backend(ArrayBackend):
 
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
-        arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
+
+        arr = blosc2.zeros(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
         arr.name = name
         return Blosc2Handle(arr)
 
