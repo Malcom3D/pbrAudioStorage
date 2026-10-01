@@ -110,7 +110,7 @@ class StorageEngine:
         """Writes data to a materialized node."""
         if name not in self._mats:
             raise KeyError(f"Node '{name}' has not been materialized.")
-        self._mats[name].handle.write(data, slices slices)
+        self._mats[name].handle.write(data, slices)
 
     def read_node(self, name: str, slices: slice | tuple = ...) -> np.ndarray:
         """Reads data from a materialized node."""
