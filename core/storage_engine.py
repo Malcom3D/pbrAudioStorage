@@ -185,7 +185,7 @@ class StorageEngine:
             dst_chunk = tr.op(src_chunk, **tr.params)
             child_mat.handle.write(dst_chunk, (..., slice(start, stop)))
 
-    def _apply_combine_transform(self, parents: List[Tuple[MaterializedNode, Edge EdgeTransform]], child_mat: MaterializedNode) -> None:
+    def _apply_combine_transform(self, parents: List[Tuple[MaterializedNode, EdgeTransform]], child_mat: MaterializedNode) -> None:
         """Applies a combine transform (e.g., merge) in chunks."""
         # This is a placeholder for more complex merge logic.
         # For now, it assumes a simple concatenation along the first axis.
