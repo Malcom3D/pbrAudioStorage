@@ -79,6 +79,7 @@ class StorageEngine:
                     root_path=self.root_path,
                     cparams=cparams,
                     dparams_nthreads=config.storage.blosc2_dparams_threads,
+                    chunk_size_samples=storage_config.chunk_size_samples,
                 )
             elif storage_config.backend == "zarr":
                 self.backend = ZarrBackend(root_path=self.root_path, **storage_config.zarr_store_kwargs)
