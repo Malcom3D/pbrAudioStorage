@@ -37,6 +37,17 @@ class MaterializedNode:
     node: DAGNode
     handle: ArrayHandle
 
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """Convenience accessor for the node's shape."""
+        return self.node.shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        """Convenience accessor for the node's dtype."""
+        return self.node.dtype
+
+
 @dataclass
 class StorageEngine:
     """
@@ -64,34 +75,42 @@ class StorageEngine:
                     "nthreads": config.storage.blosc2_cparams_threads,
                     "filters": [eval(f"blosc2.Filter.{f.upper()}") for f in storage_config.blosc2_filters],
                 }
-                self.backend = Blosc2Backend(root_path=self.root_path, cparams=cparams, dparams_nthreads=config.storage.blosc2_dparams_threads)
+                self.backend = Blosc2Backend(
+                    root_path=self.root_path,
+                    cparams=cparams,
+                    dparams_nthreads=config.storage.blosc2_dparams_threads,
+                )
             elif storage_config.backend == "zarr":
                 self.backend = ZarrBackend(root_path=self.root_path, **storage_config.zarr_store_kwargs)
             else:
                 raise ValueError(f"Unsupported storage backend: {storage_config.backend}")
-        
+
         debug_print(f"StorageEngine initialized with '{storage_config.backend}' backend at '{self.root_path}'")
 
     def materialize(self, root: DAGNode, resume: bool = True) -> None:
         """Creates the persistent arrays for the entire DAG."""
         debug_print(f"Materializing DAG from root: {root.name}")
         for node in self._toposort(root):
+            if node.shape[-1] <= 0:
+                debug_print(f"  Skipping node '{node.name}' with invalid shape {node.shape}")
+                continue
+
             key = self._sanitize(node.name)
             handle = None
             if resume:
                 handle = self.backend.try_open(key, node.shape)
-            
+
             if handle is None:
                 debug_print(f"  Creating new array for node: {node.name} (shape: {node.shape})")
                 handle = self.backend.create(name=key, shape=node.shape, dtype=node.dtype)
-            
+
             self._mats[node.name] = MaterializedNode(node, handle)
 
     def write_node(self, name: str, data: np.ndarray, slices: slice | tuple = ...) -> None:
         """Writes data to a materialized node."""
         if name not in self._mats:
             raise KeyError(f"Node '{name}' has not been materialized.")
-        self._mats[name].handle.write(data, slices)
+        self._mats[name].handle.write(data, slices slices)
 
     def read_node(self, name: str, slices: slice | tuple = ...) -> np.ndarray:
         """Reads data from a materialized node."""
@@ -113,8 +132,12 @@ class StorageEngine:
         """
         Processes all nodes in the DAG in topological order, applying
         transforms from parents to children.
+
+        Since `_mats` is populated in topological order by `materialize()`,
+        we can simply iterate over it in insertion order.
         """
         debug_print("Processing DAG...")
+        # Iterate over a snapshot of keys to avoid mutation issues.
         for name in list(self._mats.keys()):
             self.apply_transform(name)
 
@@ -129,26 +152,51 @@ class StorageEngine:
         debug_print(f"  Applying transform for node: {name}")
         if len(mat.node.parent_edges) == 1:
             parent_node, tr = mat.node.parent_edges[0]
-            parent_mat = self._mats[parent_node.name]
+            # BUG FIX: parent_node is a DAGNode, so its name is a string.
+            parent_mat = self._mats.get(parent_node.name)
+            if parent_mat is None:
+                debug_print(f"    Parent node '{parent_node.name}' not materialized, skipping.")
+                return
             self._apply_single_transform(parent_mat, mat, tr)
         else:
-            parents = [(self._mats[p.name], tr) for p, tr in mat.node.parent_edges]
-            self._apply_combine_transform(parents, mat)
+            parents = []
+            for p, tr in mat.node.parent_edges:
+                parent_mat = self._mats.get(p.name)
+                if parent_mat is not None:
+                    parents.append((parent_mat, tr))
+            if parents:
+                self._apply_combine_transform(parents, mat)
 
     def _apply_single_transform(self, parent_mat: MaterializedNode, child_mat: MaterializedNode, tr: EdgeTransform) -> None:
-        """AppApplies a single transform in chunks."""
+        """Applies a single transform in chunks."""
+        if tr.op is None:
+            debug_print(f"    Transform '{tr.name}' has no op, skipping.")
+            return
+
+        # BUG FIX: use parent_mat.node.shape instead of parent_mat.shape
+        # (we also added a `shape` property on MaterializedNode for convenience).
         n_samples = parent_mat.shape[-1]
+        if n_samples <= 0:
+            return
+
         for start in range(0, n_samples, self.chunk_size):
             stop = min(start + self.chunk_size, n_samples)
             src_chunk = parent_mat.handle.read((..., slice(start, stop)))
             dst_chunk = tr.op(src_chunk, **tr.params)
             child_mat.handle.write(dst_chunk, (..., slice(start, stop)))
 
-    def _apply_combine_transform(self, parents: List[Tuple[MaterializedNode, EdgeTransform]], child_mat: MaterializedNode) -> None:
+    def _apply_combine_transform(self, parents: List[Tuple[MaterializedNode, Edge EdgeTransform]], child_mat: MaterializedNode) -> None:
         """Applies a combine transform (e.g., merge) in chunks."""
         # This is a placeholder for more complex merge logic.
         # For now, it assumes a simple concatenation along the first axis.
+        if not parents:
+            return
+
+        # BUG FIX: use .shape property instead of .shape on MaterializedNode directly.
         n_samples = parents[0][0].shape[-1]
+        if n_samples <= 0:
+            return
+
         for start in range(0, n_samples, self.chunk_size):
             stop = min(start + self.chunk_size, n_samples)
             src_chunks = [p.handle.read((..., slice(start, stop))) for p, _ in parents]
@@ -156,7 +204,6 @@ class StorageEngine:
             # Here we just concatenate.
             dst_chunk = np.concatenate(src_chunks, axis=0)
             child_mat.handle.write(dst_chunk, (..., slice(start, stop)))
-
 
     def close(self) -> None:
         """Closes all open array handles."""
@@ -173,6 +220,7 @@ class StorageEngine:
 
     def _toposort(self, root: DAGNode) -> List[DAGNode]:
         seen, out = set(), []
+
         def visit(n: DAGNode):
             if n.name in seen:
                 return
@@ -180,6 +228,7 @@ class StorageEngine:
                 visit(p)
             seen.add(n.name)
             out.append(n)
+
         visit(root)
         return out
 

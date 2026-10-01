@@ -63,12 +63,14 @@ class Blosc2Backend(ArrayBackend):
         self.dparams = blosc2.DParams(nthreads=dparams_nthreads)
 
     def create(self, name: str, shape: Tuple[int, ...], dtype: np.dtype, chunks: Tuple[int, ...] | None = None, **kw: Any) -> Blosc2Handle:
+        if shape is None or any(int(d) <= 0 for d in shape):
+            raise ValueError(f"Refusing to create array '{name}' with invalid shape {shape}")
+
         if chunks is None:
             chunks = self._auto_chunks(shape, dtype)
-#        self.cparams['typesize'] = sys.getsizeof(dtype.type())
         arr = blosc2.empty(shape=shape, dtype=dtype, chunks=chunks, cparams=self.cparams, dparams=self.dparams, urlpath=f"{self.root}/{name}.b2nd", mode="w", **kw)
-        arr.name = name
-        return Blosc2Handle(arr)
+    arr.name = name
+    return Blosc2Handle(arr)
 
     def open(self, name: str) -> Blosc2Handle:
         arr = blosc2.open(f"{self.root}/{name}.b2nd", mode="a", cparams=self.cparams, dparams=self.dparams)
@@ -84,14 +86,21 @@ class Blosc2Backend(ArrayBackend):
         return Blosc2Handle(arr)
 
     @staticmethod
-    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype, target_bytes: int = 1 << 20) -> Tuple[int, ...]:
+    def _auto_chunks(shape: Tuple[int, ...], dtype: np.dtype, target_bytes: int = 1 << << 20) -> Tuple[int, ...]:
         """Pick chunk size so a chunk is ~1 MiB, prioritizing the last axis."""
         itemsize = np.dtype(dtype).itemsize
-        # Start with full size for the last axis, 1 for others
-        chunks = [1] * (len(shape) - 1) + [shape[-1]]
-        
-        # Shrink last axis if a single chunk exceeds target
+
+        # Guard against invalid shapes that could cause SIGFPE inside blosc2.
+        if not shape or any(d <= 0 for d in shape):
+            raise ValueError(f"Cannot compute chunks for invalid shape: {shape}")
+
+        # Start with full size for the last axis, 1 for others.
+        chunks = [1] * (len(shape) - 1) + [int(shape[-1])]
+
+        # Shrink last axis if a single chunk exceeds target.
         while (chunks[-1] * itemsize * int(np.prod(chunks[:-1]))) > target_bytes and chunks[-1] > 1:
             chunks[-1] //= 2
-        return tuple(chunks)
 
+        # Ensure no zero-sized chunks.
+        chunks = [max(1, int(c)) for c in chunks]
+        return tuple(chunks)
