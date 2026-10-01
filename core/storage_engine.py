@@ -19,7 +19,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass, field
-from typing import Iterable, Dict, List, Tuple
+from typing import Iterable, Dict, List, Tuple, Union
 import numpy as np
 import blosc2
 
@@ -110,17 +110,57 @@ class StorageEngine:
 
             self._mats[node.name] = MaterializedNode(node, handle)
 
-    def write_node(self, name: str, data: np.ndarray, slices: slice | tuple = ...) -> None:
+    def write_node(self, name: str, data: np.ndarray, slices: Union[slice, tuple] = ...) -> None:
         """Writes data to a materialized node."""
         if name not in self._mats:
             raise KeyError(f"Node '{name}' has not been materialized.")
-        self._mats[name].handle.write(data, slices)
+        
+        mat = self._mats[name]
+        handle = mat.handle
+        
+        # Ensure data is a numpy array of the correct dtype and contiguous
+        data = np.asarray(data)
+        if data.dtype != mat.dtype:
+            data = data.astype(mat.dtype)
+        data = np.ascontiguousarray(data)
+        
+        # Normalize slices: convert scalar indices to single-element slices
+        # because blosc2 may not handle mixed scalar/slice indexing correctly
+        normalized_slices = self._normalize_slices(slices, mat.shape)
+        
+        # Compute the expected shape of the target region
+        expected_shape = self._compute_slice_shape(normalized_slices, mat.shape)
+        
+        # Reshape or broadcast data to match expected shape
+        if data.shape != expected_shape:
+            if data.size == int(np.prod(expected_shape)):
+                data = data.reshape(expected_shape)
+            else:
+                try:
+                    data = np.broadcast_to(data, expected_shape).copy()
+                except ValueError:
+                    raise ValueError(
+                        f"Data shape {data.shape} does not match slice shape {expected_shape} "
+                        f"for node '{name}' (node shape: {mat.shape})"
+                    )
+        
+        try:
+            handle.write(data, normalized_slices)
+        except Exception as e:
+            debug_print(
+                f"Failed to write to node '{name}' with slices {normalized_slices}: {e}\n"
+                f"  Data shape: {data.shape}, dtype: {data.dtype}\n"
+                f"  Node shape: {mat.shape}, dtype: {mat.dtype}"
+            )
+            raise
 
-    def read_node(self, name: str, slices: slice | tuple = ...) -> np.ndarray:
+    def read_node(self, name: str, slices: Union[slice, tuple] = ...) -> np.ndarray:
         """Reads data from a materialized node."""
         if name not in self._mats:
             raise KeyError(f"Node '{name}' has not been materialized.")
-        return self._mats[name].handle.read(slices)
+        mat = self._mats[name]
+        normalized_slices = self._normalize_slices(slices, mat.shape)
+        return mat.handle.read(normalized_slices)
 
     def build_and_process(self, obj_idx: int, duration_s: float):
         """
@@ -136,12 +176,8 @@ class StorageEngine:
         """
         Processes all nodes in the DAG in topological order, applying
         transforms from parents to children.
-
-        Since `_mats` is populated in topological order by `materialize()`,
-        we can simply iterate over it in insertion order.
         """
         debug_print("Processing DAG...")
-        # Iterate over a snapshot of keys to avoid mutation issues.
         for name in list(self._mats.keys()):
             self.apply_transform(name)
 
@@ -156,7 +192,6 @@ class StorageEngine:
         debug_print(f"  Applying transform for node: {name}")
         if len(mat.node.parent_edges) == 1:
             parent_node, tr = mat.node.parent_edges[0]
-            # BUG FIX: parent_node is a DAGNode, so its name is a string.
             parent_mat = self._mats.get(parent_node.name)
             if parent_mat is None:
                 debug_print(f"    Parent node '{parent_node.name}' not materialized, skipping.")
@@ -200,19 +235,14 @@ class StorageEngine:
             dst_chunk = tr.op(src_chunk, **tr.params)
             if dst_chunk is None:
                 continue
-            dst_chunk = np.asarray(dst_chunk, dtype=child_mat.dtype)
+            dst_chunk = np.ascontiguousarray(dst_chunk, dtype=child_mat.dtype)
 
             expected_shape = child_mat.shape[:-1] + (stop - start,)
 
             if dst_chunk.shape != expected_shape:
                 if dst_chunk.size == int(np.prod(expected_shape)):
-                    # Same number of elements, just reshape.
                     dst_chunk = dst_chunk.reshape(expected_shape)
                 else:
-                    # Broadcast/truncate into a zero-filled buffer so the
-                    # write still succeeds even if the transform is a stub
-                    # (e.g. placeholder returning (n_forces, T) for a
-                    # (n_forces, bands, T) child node).
                     new_chunk = np.zeros(expected_shape, dtype=child_mat.dtype)
                     n_common = min(dst_chunk.ndim, len(expected_shape))
                     common_src = tuple(slice(0, min(dst_chunk.shape[i], expected_shape[i])) for i in range(n_common))
@@ -260,6 +290,53 @@ class StorageEngine:
     @staticmethod
     def _sanitize(name: str) -> str:
         return name.replace("/", "__").replace(" ", "_")
+
+    @staticmethod
+    def _normalize_slices(slices: Union[slice, tuple], shape: Tuple[int, ...]) -> tuple:
+        """
+        Convert scalar indices to single-element slices for blosc2 compatibility.
+        
+        blosc2's NDArray.__setitem__ can fail with mixed scalar/slice indexing,
+        so we normalize all scalar indices to single-element slices.
+        """
+        if not isinstance(slices, tuple):
+            slices = (slices,)
+        
+        normalized = []
+        for s in slices:
+            if isinstance(s, (int, np.integer)):
+                # Convert scalar to single-element slice
+                normalized.append(slice(int(s), int(s) + 1))
+            else:
+                normalized.append(s)
+        
+        # Pad with full slices if fewer slices than dimensions
+        while len(normalized) < len(shape):
+            normalized.append(slice(None))
+        
+        # Truncate if more slices than dimensions
+        normalized = normalized[:len(shape)]
+        
+        return tuple(normalized)
+
+    @staticmethod
+    def _compute_slice_shape(slices: tuple, shape: Tuple[int, ...]) -> Tuple[int, ...]:
+        """Compute the shape of the region selected by slices."""
+        result = []
+        for i, s in enumerate(slices):
+            if i >= len(shape):
+                break
+            if isinstance(s, slice):
+                start = s.start if s.start is not None else 0
+                stop = s.stop if s.stop is not None else shape[i]
+                if start < 0:
+                    start = shape[i] + start
+                if stop < 0:
+                    stop = shape[i] + stop
+                result.append(stop - start)
+            else:
+                result.append(1)
+        return tuple(result)
 
     def _toposort(self, root: DAGNode) -> List[DAGNode]:
         seen, out = set(), []
