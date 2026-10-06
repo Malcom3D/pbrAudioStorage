@@ -128,7 +128,7 @@ class Blosc2Backend:
         return self._store
 
     @staticmethod
-    def _node_path(engine:: str, obj_idx: int) -> str:
+    def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
     # -------------------------------------------------------------- allocate
@@ -149,7 +149,7 @@ class Blosc2Backend:
         Idempotent: if the node already exists we leave it alone.
         """
         n_tracks = len(track_names)
-        n_signals = len(s(signal_names)
+        n_signals = len(signal_names)
         shape = (n_tracks, n_signals, total_samples)
 
         meta = dict(metadata or {})
