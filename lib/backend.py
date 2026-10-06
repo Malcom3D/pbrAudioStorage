@@ -82,7 +82,13 @@ class Blosc2Backend:
         # We open lazily and keep the handle for the process lifetime.
         with self._lock:
             if self._store is None:
-                self._store = blosc2.TreeStore(self.path, mode=self.mode)
+                if not os.path.exists(f"{self.path}/embed.b2e"):
+                    if not os.path.dirname(self.path):
+                        os.makedirs(self.path, exist_ok=True)
+                    _store = blosc2.TreeStore(self.path, mode='w')
+                    _store.close()
+                if os.path.dirname(self.path) and os.path.exists(f"{self.path}/embed.b2e"):
+                    self._store = blosc2.TreeStore(self.path, mode=self.mode)
 
     @classmethod
     def get(cls, path: str, mode: str = "a") -> "Blosc2Backend":
@@ -174,7 +180,7 @@ class Blosc2Backend:
 
                 store[node] = arr
 
-    def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_index: int, sample_start: Optional[int] = None) -> None:
+    def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_index: int, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
         """
         Write `data` (shape (C, S) or (S,)) into
             /<engine>/<obj_idx>[track_idx, signal_index, :]
@@ -182,6 +188,7 @@ class Blosc2Backend:
         Otherwise the signal is zero-padded to total_samples and the chunk
         is placed at [sample_start : sample_start + S].
         """
+        signal_saved = False
         with self._lock:
             store = self.store
             node = self._node_path(engine, obj_idx)
@@ -213,9 +220,7 @@ class Blosc2Backend:
                     data = data[:, :total_samples]
                     S_in = total_samples
                 # read existing row, patch, write back
-                row = np.asarray(
-                    arr[track_index, signal_index, :], dtype=np.float32
-                ).reshape(1, -1)
+                row = np.asarray(arr[track_index, signal_index, :], dtype=np.float32).reshape(1, -1)
                 # row shape is (1, total_samples); broadcast if C_in > 1
                 if C_in == 1:
                     _copy_into(row, data)
@@ -223,6 +228,7 @@ class Blosc2Backend:
                     # multichannel into mono storage: downmix by first channel
                     _copy_into(row, data[:1, :])
                 arr[track_index, signal_index, :] = row[0]
+                signal_saved = True
             else:
                 # padded chunk write
                 if sample_start < 0:
@@ -239,25 +245,20 @@ class Blosc2Backend:
                 # and storage was allocated multichannel — but our schema is
                 # mono-per-signal, so we downmix by channel 0.
                 arr[track_index, signal_index, :] = buf[0]
+                signal_saved = True
 
-    # ------------------------------------------------------------------- read
+            if signal_saved:
+                signal_name = arr.attrs['tracks']['signal_names'][signal_index]
+                arr.attrs['tracks'][signal_name] = metadata
 
     def get_ndarray(self, engine: str, obj_idx: int) -> blosc2.NDArray:
         with self._lock:
             return self.store[self._node_path(engine, obj_idx)]
 
-    def read_signal(
-        self,
-        engine: str,
-        obj_idx: int,
-        track_index: int,
-        signal_index: int,
-        start: int = 0,
-        stop: Optional[int] = None,
-    ) -> np.ndarray:
+    def read_signal(self, engine: str, obj_idx: int, track_index: int, signal_index: int)-> np.ndarray:
         with self._lock:
             arr = self.store[self._node_path(engine, obj_idx)]
-            sl = arr[track_index, signal_index, start:stop]
+            sl = arr[track_index, signal_index,:]
             return np.asarray(sl, dtype=np.float32).reshape(1, -1)
 
     def attrs(self, engine: str, obj_idx: int) -> Dict[str, Any]:

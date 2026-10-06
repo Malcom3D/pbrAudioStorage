@@ -152,29 +152,29 @@ class StorageEngine:
         engine = self.engine
         start = sample_start
 
-        task = delayed(backend.write_signal)(
-            engine=engine,
-            obj_idx=int(obj_idx),
-            track_name=track_name,
-            signal_index=int(signal_index),
-            data=arr,
-            sample_start=start,
-        )
+        task = delayed(backend.write_signal)(engine=engine, obj_idx=int(obj_idx), track_name=track_name, signal_index=int(signal_index), data=arr, metadata=metadata, sample_start=start)
+
 #        # synchronous scheduler: runs in this thread, no GIL contention
 #        compute(task, scheduler="synchronous")
         compute(task)
 
-    def read(self, obj_idx: int, track_index: int, signal_index: int, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
+    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
         if self.backend is None:
             self.materialize()
-        return self.backend.read_signal(
-            engine=self.engine,
-            obj_idx=obj_idx,
-            track_index=track_index,
-            signal_index=signal_index,
-            start=start,
-            stop=stop,
-        )
+        track_index = self._resolve_track_index(track_name)
+        signal_index = self._resolve_signal_index(signal_name)
+        if track_index is not None and signal_index is not None:
+            return self.backend.read_signal(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_index=signal_index, start=start, stop=stop)
+        return None
+
+    def _resolve_track_index(self, track_name: Any) -> Optional[int]:
+        for i, name in enumerate(self.track_names):
+            if name == track_name:
+                return i
+            # allow tuple/list ranges to match by containment
+            if isinstance(name, (list, tuple)) and track_name in name:
+                return i
+        return None
 
     def _resolve_signal_index(self, signal_name: Any) -> Optional[int]:
         for i, name in enumerate(self.signal_names):
