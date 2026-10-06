@@ -159,12 +159,17 @@ class StorageEngine:
         compute(task)
 
     def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
-        if self.backend is None:
+        if engine == self.engine and self.backend is None:
             self.materialize()
+
         track_index = self._resolve_track_index(track_name)
         signal_index = self._resolve_signal_index(signal_name)
+
         if track_index is not None and signal_index is not None:
-            return self.backend.read_signal(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_index=signal_index, start=start, stop=stop)
+            backend = blosc2.TreeStore(self.tree_store_path, mmap_mode='r')
+            signal = backend.read_signal(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_index=signal_index, start=start, stop=stop)
+            backend.close()
+            return signal
         return None
 
     def _resolve_track_index(self, track_name: Any) -> Optional[int]:
