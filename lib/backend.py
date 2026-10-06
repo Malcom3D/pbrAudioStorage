@@ -131,7 +131,7 @@ class Blosc2Backend:
         Idempotent: if the node already exists we leave it alone.
         """
         n_tracks = len(track_names)
-        n_signals = len(signal_names)
+        n_signals = len(signal_names[0])
         shape = (n_tracks, n_signals, total_samples)
 
         meta = dict(metadata or {})
@@ -163,14 +163,14 @@ class Blosc2Backend:
                             "track_idx": t_idx,
                             "track_name": t_name,
                             "n_signals": n_signals,
-                            "signal_names": list(signal_names),
+                            "signal_names": list(signal_names[t_idx]),
                         }
                     )
                     # signal-level meta, keyed by track name
                     arr.attrs[t_name] = [
                         {
                             "signal_idx": s_idx,
-                            "signal_name": signal_names[s_idx],
+                            "signal_name": signal_names[t_idx][s_idx],
                             "signal_type": signal_type,
                             **meta,
                         }
@@ -248,8 +248,8 @@ class Blosc2Backend:
                 signal_saved = True
 
             if signal_saved:
-                signal_name = arr.attrs['tracks']['signal_names'][signal_index]
-                arr.attrs['tracks'][signal_name] = metadata
+                signal_name = arr.attrs['tracks'][track_index]['signal_names'][signal_index]
+                arr.attrs[f'{track_index}_{signal_name}'] = metadata
 
     def get_ndarray(self, engine: str, obj_idx: int) -> blosc2.NDArray:
         with self._lock:
