@@ -57,7 +57,7 @@ class StorageEngine:
         set_debug_prefix(self.__class__.__name__)
         self.config = config
 
-    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str total_samples: int, signal_names: List[Any] = None, metadata: Dict[str, Any] = None) -> None:
+    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, signal_names: List[Any] = None, metadata: Dict[str, Any] = None) -> None:
         """
         Record the schema for a group of tracks. Does NOT allocate storage.
         Call `materialize()` afterwards to pre-allocate the NDArrays.
@@ -78,7 +78,7 @@ class StorageEngine:
         self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
 
         # resolve the on-disk TreeStore path
-        self.tree_store_path = f"{self.config.storage.root_path}/{collection}.b2d"
+        self.tree_store_path = f"{self.config.storage.root_path}/{self.collection}.b2d"
 
         debug_print(
             f"register: engine={engine} collection={collection} "
@@ -86,7 +86,7 @@ class StorageEngine:
             f"signals={len(self.signal_names)} total_samples={self.total_samples}"
         )
 
-    def materialize(self, obj_idx: int) -> None:
+    def materialize(self) -> None:
         """
         Pre-allocate the blosc2.NDArrays for a object registered so far.
         Idempotent — safe to call again after adding objects.
