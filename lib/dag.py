@@ -16,64 +16,65 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+# dag.py
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Tuple, List
-from enum import Enum
+from typing import Sequence, Optional, Callable
 import numpy as np
+from audio_model import NodeKind, NodePath, AudioProps, new_id
 
 
-class NodeKind(str, Enum):
+# ---------- Signal processor protocol ----------
+
+class SignalProcessor:
     """
-    Defines the fundamental type of a node in the DAG.
-    The specific data type (e.g., 'force', 'modal') is stored in the node's meta.
+    Stub. Implementations transform an array of shape
+    (n_channels, total_samples) -> same shape.
     """
-    SOURCE = "source"          # Raw data, e.g., from a physics or rigidbody solver
-    PROCESSED = "processed"    # Data that has been transformed, e.g., noise-enhanced
-    OUTPUT = "output"          # Final rendered output, e.g., ambisonic
+    def process(self, x: np.ndarray, props: AudioProps) -> np.ndarray:
+        raise NotImplementedError
 
+
+class IdentityProcessor(SignalProcessor):
+    def process(self, x, props):
+        return x
+
+
+# ---------- DAG nodes ----------
 
 @dataclass
-class EdgeTransform:
-    """Metadata describing how parent → child is computed."""
-    name: str
-    op: Optional[Callable] = None # JIT-compilable function signature: (chunk: np.ndarray, **params) -> np.ndarray
-    params: dict[str, Any] = field(default_factory=dict) # e.g. {"unit_in": "N", "unit_out": "Pa", "gain": 1e-3}
-
-
-@dataclass
-class DAGNode:
+class DagNode:
+    node_id: str
     kind: NodeKind
-    name: str
-    shape: tuple[int, ...]          # full ND shape at this node
-    dtype: np.dtype
-    parent_edges: list[tuple["DAGNode", "EdgeTransform"]] = field(default_factory=list)
-    meta: dict[str, Any] = field(default_factory=dict)
+    path: NodePath
+    props: AudioProps
+    children: list["DagNode"] = field(default_factory=list)
+    processor: SignalProcessor = field(default_factory=IdentityProcessor)
+    # for leaf nodes: how to fetch the raw data
+    source: Optional["LeafSource"] = None
+    # for op nodes: how to combine children
+    mixer: Optional["Mixer"] = None
 
-    def add_parent(self, parent: "DAGNode", transform: "EdgeTransform"):
-        self.parent_edges.append((parent, transform))
-        return self
+
+class LeafSource:
+    """Abstract fetch of a leaf's audio from disk."""
+    def fetch(self) -> np.ndarray:  # (n_channels, total_samples)
+        raise NotImplementedError
 
 
-@dataclass
-class TrackDescriptor:
-    """
-    A descriptor for a group of related tracks that can be processed by the StorageEngine.
-    This is the primary way to register a new data type with the system.
-    """
-    # A unique name for this track group, e.g., "physics_forces", "rigidbody_modal"
-    name: str
-    
-    # The kind of node this descriptor produces.
-    node_kind: NodeKind
-    
-    # The names of the individual tracks in this group.
-    # The order is important and will be used for indexing.
-    track_names: List[str]
-    
-    # A factory function that creates the EdgeTransform for this track group.
-    # It receives the entity_manager and the node being processed as arguments.
-    transform_factory: Callable[['EntityManager', DAGNode], EdgeTransform]
+class Mixer:
+    """Abstract combination of children arrays."""
+    def mix(self, arrays: Sequence[np.ndarray], props: AudioProps) -> np.ndarray:
+        raise NotImplementedError
 
-    # Optional metadata about the descriptor.
-    meta: dict[str, Any] = field(default_factory=dict)
+
+class SumMixer(Mixer):
+    """Trivial sum. Replace with ambisonic-aware / decorrelated mixing."""
+    def mix(self, arrays, props):
+        if not arrays:
+            return np.zeros((props.n_channels, 0), dtype=np.float32)
+        n = min(a.shape[-1] for a in arrays)
+        out = np.zeros((props.n_channels, n), dtype=np.float32)
+        for a in arrays:
+            out += a[..., :n]
+        return out

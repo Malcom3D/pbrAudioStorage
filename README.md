@@ -1,10 +1,14 @@
 pbrAudioStorage
 ================
 
-High performance multi-dimensional RAW audio storage Engine and Library for the physically based rendered Audio suite pbrAudio.
+High performance unlimited Multitrack RAW Audio Data Storage solution with non-desctructive signal processing and DAG data structure for the physically based rendered Audio suite pbrAudio.
 
 ## Features
-Elegantly handle tracks explosion and non-destructive fast signal processing in the de/compression loop with blosc2 JIT.
+Elegantly solve pbrAudio tracks explosion.
+Handle more than 18 quintillion tracks per file.
+Lossless RAW audio data compression algorithm.
+Fast multi-threaded de/compression.
+Non-destructive signal processing in the de/compression loop with blosc2 JIT.
 
 ## License
 
