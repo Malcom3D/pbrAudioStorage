@@ -55,22 +55,9 @@ class StorageEngine:
         config = self.entity_manager.get("config")
         set_debug(config.system.debug)
         set_debug_prefix(self.__class__.__name__)
-        self._config = config
+        self.config = config
 
-    # ------------------------------------------------------------------ register
-
-    def register(
-        self,
-        collection: str,
-        objs_type: str,
-        engine: str,
-        track_group: str,
-        track_names: List[str],
-        signal_type: str,
-        total_samples: int,
-        signal_names: List[Any] = None,
-        metadata: Dict[str, Any] = None,
-    ) -> None:
+    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str total_samples: int, signal_names: List[Any] = None, metadata: Dict[str, Any] = None) -> None:
         """
         Record the schema for a group of tracks. Does NOT allocate storage.
         Call `materialize()` afterwards to pre-allocate the NDArrays.
@@ -87,11 +74,11 @@ class StorageEngine:
         self.metadata = dict(metadata or {})
 
         # collect object indices from the entity manager
-        objs_list = getattr(self._config, objs_type)
+        objs_list = getattr(self.config, objs_type)
         self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
 
         # resolve the on-disk TreeStore path
-        self.tree_store_path = f"{self._config.storage.root_path}/{collection}.b2d"
+        self.tree_store_path = f"{self.config.storage.root_path}/{collection}.b2d"
 
         debug_print(
             f"register: engine={engine} collection={collection} "
@@ -99,11 +86,9 @@ class StorageEngine:
             f"signals={len(self.signal_names)} total_samples={self.total_samples}"
         )
 
-    # ---------------------------------------------------------------- materialize
-
-    def materialize(self) -> None:
+    def materialize(self, obj_idx: int) -> None:
         """
-        Pre-allocate the blosc2.NDArrays for every object registered so far.
+        Pre-allocate the blosc2.NDArrays for a object registered so far.
         Idempotent — safe to call again after adding objects.
         """
         if self.engine is None or self.total_samples is None:
@@ -112,11 +97,11 @@ class StorageEngine:
         self.backend = Blosc2Backend.get(self.tree_store_path, mode="a")
 
         # discover any newly-added objects
-        objs_list = getattr(self._config, self.objs_type)
+        objs_list = getattr(self.config, self.objs_type)
         current = [objs_list[k].idx for k in range(len(objs_list))]
         self.obj_indices = current
 
-        self.back.backend.materialize(
+        self.backend.materialize(
             engine=self.engine,
             obj_indices=self.obj_indices,
             track_names=self.track_names,
@@ -125,22 +110,13 @@ class StorageEngine:
             signal_type=self.signal_type,
             metadata=self.metadata,
         )
+
         debug_print(
             f"materialize: allocated {len(self.obj_indices)} object(s) "
             f"at {self.tree_store_path}"
         )
 
-    # ---------------------------------------------------------------------- write
-
-    def write(
-        self,
-        audio_data: np.ndarray,
-        obj_idx: int,
-        track_name: str,
-        signal_name: Optional[Any] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        sample_start: Optional[int] = None,
-    ) -> None:
+    def write(self, audio_data: np.ndarray, obj_idx: int, track_name: str, signal_name: Optional[Any] = None, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
         """
         Offload a write to the backend via dask.delayed.
 
@@ -188,16 +164,7 @@ class StorageEngine:
 #        compute(task, scheduler="synchronous")
         compute(task)
 
-    # ----------------------------------------------------------------------- read
-
-    def read(
-        self,
-        obj_idx: int,
-        track_index: int,
-        signal_index: int,
-        start: int = 0,
-        stop: Optional[int] = None,
-    ) -> np.ndarray:
+    def read(self, obj_idx: int, track_index: int, signal_index: int, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
         if self.backend is None:
             self.materialize()
         return self.backend.read_signal(
@@ -208,8 +175,6 @@ class StorageEngine:
             start=start,
             stop=stop,
         )
-
-    # ------------------------------------------------------------------- helpers
 
     def _resolve_signal_index(self, signal_name: Any) -> Optional[int]:
         for i, name in enumerate(self.signal_names):

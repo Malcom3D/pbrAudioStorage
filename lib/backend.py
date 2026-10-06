@@ -55,10 +55,6 @@ def _copy_into(dst: np.ndarray, src: np.ndarray) -> None:
             dst[ch, i] = src[ch, i]
 
 
-# ---------------------------------------------------------------------------
-# Backend
-# ---------------------------------------------------------------------------
-
 class Blosc2Backend:
     """
     Single owner of a blosc2.TreeStore handle. All StorageEngine instances
@@ -74,8 +70,6 @@ class Blosc2Backend:
     _instances: Dict[str, "Blosc2Backend"] = {}
     _instances_lock = threading.Lock()
 
-    # ------------------------------------------------------------------ ctor
-
     def __init__(self, path: str, mode: str = "a"):
         self.path = path
         self.mode = mode
@@ -89,8 +83,6 @@ class Blosc2Backend:
         with self._lock:
             if self._store is None:
                 self._store = blosc2.TreeStore(self.path, mode=self.mode)
-
-    # -------------------------------------------------------------- factory
 
     @classmethod
     def get(cls, path: str, mode: str = "a") -> "Blosc2Backend":
@@ -109,8 +101,6 @@ class Blosc2Backend:
                 inst.close()
             cls._instances.clear()
 
-    # ------------------------------------------------------------ lifecycle
-
     def close(self) -> None:
         with self._lock:
             if self._store is not None:
@@ -118,8 +108,6 @@ class Blosc2Backend:
                     self._store.close()
                 finally:
                     self._store = None
-
-    # --------------------------------------------------------------- helpers
 
     @property
     def store(self) -> blosc2.TreeStore:
@@ -131,19 +119,7 @@ class Blosc2Backend:
     def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
-    # -------------------------------------------------------------- allocate
-
-    def materialize(
-        self,
-        engine: str,
-        obj_indices: List[int],
-        track_names: List[str],
-        signal_names: List[Any],
-        total_samples: int,
-        signal_type: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        dtype: np.dtype = np.float32,
-    ) -> None:
+    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], signal_names: List[Any], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
         """
         Pre-allocate one NDArray per object: (n_tracks, n_signals, total_samples).
         Idempotent: if the node already exists we leave it alone.
@@ -194,21 +170,11 @@ class Blosc2Backend:
                         }
                         for s_idx in range(n_signals)
                     ]
-                arr.attrs["tracksracks"] = tracks_meta
+                arr.attrs["tracks"] = tracks_meta
 
                 store[node] = arr
 
-    # ------------------------------------------------------------------ write
-
-    def write_signal(
-        self,
-        engine: str,
-        obj_idx: int,
-        track_name: str,
-        signal_index: int,
-        data: np.ndarray,
-        sample_start: Optional[int] = None,
-    ) -> None:
+    def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_index: int, sample_start: Optional[int] = None) -> None:
         """
         Write `data` (shape (C, S) or (S,)) into
             /<engine>/<obj_idx>[track_idx, signal_index, :]
@@ -224,7 +190,7 @@ class Blosc2Backend:
             # resolve track index
             obj_meta = arr.attrs["object"]
             try:
-                t_idx = list(obj_meta["track_names"]).index(track_name)
+                track_index = list(obj_meta["track_names"]).index(track_name)
             except ValueError as exc:
                 raise KeyError(
                     f"track_name {track_name!r} not registered for "
@@ -248,7 +214,7 @@ class Blosc2Backend:
                     S_in = total_samples
                 # read existing row, patch, write back
                 row = np.asarray(
-                    arr[t_idx, signal_index, :], dtype=np.float32
+                    arr[track_index, signal_index, :], dtype=np.float32
                 ).reshape(1, -1)
                 # row shape is (1, total_samples); broadcast if C_in > 1
                 if C_in == 1:
@@ -256,7 +222,7 @@ class Blosc2Backend:
                 else:
                     # multichannel into mono storage: downmix by first channel
                     _copy_into(row, data[:1, :])
-                arr[t_idx, signal_index, :] = row[0]
+                arr[track_index, signal_index, :] = row[0]
             else:
                 # padded chunk write
                 if sample_start < 0:
@@ -272,7 +238,7 @@ class Blosc2Backend:
                 # channel 0 unless the caller explicitly passes multichannel
                 # and storage was allocated multichannel — but our schema is
                 # mono-per-signal, so we downmix by channel 0.
-                arr[t_idx, signal_index, :] = buf[0]
+                arr[track_index, signal_index, :] = buf[0]
 
     # ------------------------------------------------------------------- read
 
