@@ -125,7 +125,7 @@ class Blosc2Backend:
     def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
-    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], signal_names: List[Any], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
+    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], signal_names: List[List[Any]], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
         """
         Pre-allocate one NDArray per object: (n_tracks, n_signals, total_samples).
         Idempotent: if the node already exists we leave it alone.
