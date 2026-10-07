@@ -139,13 +139,12 @@ class StorageEngine:
 
         # resolve signal index
         if signal_name is None:
-            signal_index = len(self.signal_names)
-            self.signal_names.append(signal_index)
+            raise ValueError("`signal_name` must be provided when writing to storage.")
         else:
             signal_index = self._resolve_signal_index(signal_name)
             if signal_index is None:
-                signal_index = len(self.signal_names)
-                self.signal_names.append(signal_name)
+                # Todo: fallback for dynamic signals, but the current schema
+                signal_index = len(self.signal_names) - 1
 
         # capture a snapshot so the delayed task doesn't close over `self`
         backend = self.backend
