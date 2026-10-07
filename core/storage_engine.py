@@ -144,7 +144,8 @@ class StorageEngine:
             signal_index = self._resolve_signal_index(signal_name)
             if signal_index is None:
                 # Todo: fallback for dynamic signals, but the current schema
-                signal_index = len(self.signal_names) - 1
+                #signal_index = len(self.signal_names) - 1
+                raise ValueError(f"Signal name '{signal_name}' not found in registered schema for track '{track_name}'.")
 
         # capture a snapshot so the delayed task doesn't close over `self`
         backend = self.backend
