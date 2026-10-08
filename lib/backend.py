@@ -75,6 +75,8 @@ class Blosc2Backend:
             if self._store is None:
                 if not os.path.exists(self.path):
                     os.makedirs(self.path, exist_ok=True)
+                    _store = blosc2.TreeStore(self.path, mode='w')
+                    _store.close()
                 self._store = blosc2.TreeStore(self.path, mode=self.mode)
 
     @classmethod
