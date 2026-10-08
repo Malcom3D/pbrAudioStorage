@@ -71,7 +71,7 @@ class StorageEngine:
         self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
 
         # resolve the on-disk TreeStore path
-        self.tree_store_path = f"{self.config.storage.root_path}/{self.engine}.b2d"
+        self.tree_store_path = f"{self.config.storage.root_path}/{self.collection}/{self.engine}.b2d"
 
         debug_print(
             f"register: engine={engine} collection={collection} "
