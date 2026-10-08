@@ -147,27 +147,46 @@ class StorageEngine:
 
         compute(task)
 
-    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
+    def read(self, engine:: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
+        """
+        Reads data from the storage backend.
+
+        If `signal_name` is provided, it reads that specific signal.
+        If `signal_name` is None or not found, it returns a mixed signal
+        (e.g., sum) of all signals in the track, as defined by the backend's
+        processing rules.
+        """
+        # If the engine matches this instance and the backend isn't set up,
+        # materialize it to ensure it's ready for reading.
         if engine == self.engine and self.backend is None:
             self.materialize()
 
+        # Resolve the track name to a numerical index
         track_index = self._resolve_track_index(track_name)
+        if track_index is None:
+            debug_print(f"Track '{track_name}' not found in registered track names.")
+            return None
 
-        if track_index is not None:
-            backend = self.backend
-            if backend is None:
-                 backend = Blosc2Backend.get(self.tree_store_path, mode="r")
-            
-            signal = backend.read_signal(
-                engine=engine,
-                obj_idx=obj_idx,
-                track_index=track_index,
-                signal_name=signal_name,
-                start=start,
-                stop=stop,
-            )
-            return signal
-        return None
+        # Get or create a backend instance for reading
+        backend = self.backend
+        if backend is None:
+            # This handles cases where we read from a store we haven't written to
+            # in this session. We need to instantiate a backend for reading.
+            if self.tree_store_path is None:
+                # Cannot determine path without a prior register() call
+                debug_print("Cannot read: tree_store_path is not set. Call register() first.")
+                return None
+            backend = Blosc2Backend.get(self.tree_store_path, mode="r")
+
+        # Delegate the read and processing logic to the backend
+        return backend.read(
+            engine=engine,
+            obj_idx=obj_idx,
+            track_index=track_index,
+            signal_name=signal_name,
+            start=start,
+            stop=stop,
+        )
 
     def _resolve_track_index(self, track_name: Any) -> Optional[int]:
         for i, name in enumerate(self.track_names):
@@ -182,4 +201,3 @@ class StorageEngine:
         if self.backend is not None:
             self.backend.close()
             self.backend = None
-

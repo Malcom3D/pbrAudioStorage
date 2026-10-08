@@ -18,7 +18,7 @@
 
 import os
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 import blosc2
 import numpy as np
@@ -166,15 +166,6 @@ class Blosc2Backend:
 
                 store[node] = arr
 
-    @staticmethod
-    def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        if metadata is None:
-            return None
-        sanitized = metadata.copy()
-        if 'format' in sanitized:
-            sanitized['audio_format'] = sanitized.pop('format')
-        return sanitized
-
     def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_name: Optional[Any] = None, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
         """
         Write `data` into a track's signal slot.
@@ -245,7 +236,7 @@ class Blosc2Backend:
                 if C_in == 1:
                     _copy_into(row, data)
                 else:
-                    _copy_into(row, data[:1, :]) # Downmixmix to mono
+                    _copy_into(row, data[:1, :]) # Downmix to mono
                 arr[track_index, signal_index, :] = row[0]
             else:
                 if sample_start < 0:
@@ -257,11 +248,10 @@ class Blosc2Backend:
                 arr[track_index, signal_index, :] = buf[0]
 
             # Update metadata if provided
-            sanitized_metadata = self._sanitize_metadata(metadata)
-            if sanitized_metadata is not None:
+            if metadata is not None:
                 signal_meta_list = arr.attrs[track_name]
                 # Update the specific signal's metadata
-                signal_meta_list[signal_index].update(sanitized_metadata)
+                signal_meta_list[signal_index].update(metadata)
                 arr.attrs[track_name] = signal_meta_list
 
 
@@ -269,20 +259,108 @@ class Blosc2Backend:
         with self._lock:
             return self.store[self._node_path(engine, obj_idx)]
 
-    def read_signal(self, engine: str, obj_idx: int, track_index: int, signal_name: str, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
-        with self._lock:
-            arr = self.store[self._node_path(engine, obj_idx)]
-            
-            # Find signal index by name
-            track_meta = arr.attrs['tracks'][track_index]
-            try:
-                signal_index = track_meta['signal_names'].index(signal_name)
-            except ValueError:
-                print(f"Warning: signal_name '{signal_name}' not found in track {track_meta['track_name']}.")
-                return None
+    def read(self, engine: str, obj_idx: int, track_index: int, signal_name: Optional[str] = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
+        """
+        Reads a signal signal from a track. If signal_name is None or not found,
+        it sums all signals in the track, applying a processing chain if specified
+        in the metadata.
 
-            sl = arr[track_index, signal_index, start:stop]
-            return np.asarray(sl, dtype=np.float32).reshape(1, -1)
+        Args:
+            engine: The name of the engine (e.g., 'physicsSolver').
+            obj_idx: The object index.
+            track_index: The index of the track to read from.
+            signal_name: The name of the specific signal to read. If None, all
+                         signals in the track are combined.
+            start: Start sample for partial reads.
+            stop: End sample for partial reads.
+
+        Returns:
+            A numpy array of the audio data, or None if the track/signal is not found.
+        """
+        with self._lock:
+            node_path = self._node_path(engine, obj_idx)
+            if node_path not in self.store:
+                print(f"Warning: Node '{node_path}' not found.")
+                return None
+            arr = self.store[node_path]
+
+            # Get track metadata
+            track_meta = arr.attrs['tracks'][track_index]
+            signal_names = track_meta.get('signal_names', [])
+            track_name = track_meta['track_name']
+
+            # Find signal index by name if provided
+            signal_index = -1
+            if signal_name is not None:
+                try:
+                    signal_index = signal_names.index(signal_name)
+                except ValueError:
+                    # If signal_name is provided but not found, we fall back to summing.
+                    print(f"Warning: signal_name '{signal_name}' not found in track '{track_name}'. Summing all signals.")
+
+            # If a specific signal is found, read and return it
+            if signal_index != -1:
+                sl = arr[track_index, signal_index, start:stop]
+                return np.asarray(sl, dtype=np.float32).reshape(1, -1)
+
+            # --- Fallback logic: sum all signals in the track ---
+            n_signals = arr.shape[1]
+            if n_signals == 0:
+                return np.zeros((1, (stop or arr.shape[2]) - start), dtype=np.float32)
+
+            # Fetch all signals in the track
+            all_signals = arr[track_index, :, start:stop]  # Shape: (n_signals, n_samples)
+
+            # Check for a processing chain in metadata
+            # The metadata is stored per-signal, but a chain would likely be a track-level property.
+            # We'll look in the first signal's metadata for a 'chains' definition.
+            signal_meta = arr.attrs.get(track_name, [])
+            processing_chain = None
+            if signal_meta and isinstance(signal_meta, list) and len(signal_meta) > 0:
+                processing_chain = signal_meta[0].get('chains')
+
+            if processing_chain:
+                # Apply the DAG processing chain
+                return self._apply_processing_chain(all_signals, processing_chain)
+            else:
+                # Default behavior: sum all signals
+                return np.sum(all_signals, axis=0, keepdims=True)
+
+    def _apply_processing_chain(self, signals: np.ndarray, chain: Dict[str, Any]) -> np.ndarray:
+        """
+        Applies a processing chain defined in metadata to the signals.
+
+        Args:
+            signals: A numpy array of shape (n_signals, n_samples).
+            chain: A dictionary defining the processing steps.
+                   Example: {'op': 'mix', 'indices': [0, 1], 'mode': 'sum'}
+
+        Returns:
+            A numpy array of shape (1, n_samples) representing the processed signal.
+        """
+        op = chain.get('('op')
+        if op == 'mix':
+            indices = chain.get('indices', [])
+            mode = chain.get('mode', 'sum')
+            
+            # Ensure indices are valid
+            valid_indices = [i for i in indices if 0 <= i < signals.shape[0]]
+            if not valid_indices:
+                return np.zeros((1, signals.shape[1]), dtype=np.float32)
+
+            signals_to_mix = signals[valid_indices]
+
+            if mode == 'sum':
+                return np.sum(signals_to_mix, axis=0, keepdims=True)
+            elif mode == 'mean':
+                return np.mean(signals_to_mix, axis=0, keepdims=True)
+                       else:
+                print(f"Warning: Unsupported mix mode '{mode}' in processing chain. Defaulting to sum.")
+                return np.sum(signals_to_mix, axis=0, keepdims=True)
+        
+        # Default fallback if op is unknown or not provided
+        print(f"Warning: Unsupported processing op '{op}'. Summing all signals.")
+        return np.sum(signals, axis=0, keepdims=True)
 
     def attrs(self, engine: str, obj_idx: int) -> Dict[str, Any]:
         with self._lock:
@@ -300,4 +378,3 @@ class Blosc2Backend:
                     except ValueError:
                         continue
             return sorted(out)
-
