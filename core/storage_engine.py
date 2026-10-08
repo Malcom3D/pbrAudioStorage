@@ -147,7 +147,7 @@ class StorageEngine:
 
         compute(task)
 
-    def read(self, engine:: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
+    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
         """
         Reads data from the storage backend.
 

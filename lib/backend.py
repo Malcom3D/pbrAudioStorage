@@ -338,7 +338,7 @@ class Blosc2Backend:
         Returns:
             A numpy array of shape (1, n_samples) representing the processed signal.
         """
-        op = chain.get('('op')
+        op = chain.get('op')
         if op == 'mix':
             indices = chain.get('indices', [])
             mode = chain.get('mode', 'sum')
@@ -354,7 +354,7 @@ class Blosc2Backend:
                 return np.sum(signals_to_mix, axis=0, keepdims=True)
             elif mode == 'mean':
                 return np.mean(signals_to_mix, axis=0, keepdims=True)
-                       else:
+            else:
                 print(f"Warning: Unsupported mix mode '{mode}' in processing chain. Defaulting to sum.")
                 return np.sum(signals_to_mix, axis=0, keepdims=True)
         
