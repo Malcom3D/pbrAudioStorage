@@ -25,7 +25,7 @@ import numpy as np
 from numba import njit
 
 @njit(cache=True, fastmath=True, nogil=True)
-def _pad_into(dst: np.ndarray, src: np np.ndarray, start: int) -> None:
+def _pad_into(dst: np.ndarray, src: np.ndarray, start: int) -> None:
     """
     dst : (C, T)  float32, zero-initialised
     src : (C, S)  float32, S <= T - start
@@ -48,7 +48,7 @@ def _copy_into(dst: np.ndarray, src: np.ndarray) -> None:
     C, T = dst.shape
     Sc, Ss = src.shape
     c = C if C < Sc else Sc
-    n = T if T < < Ss else Ss
+    n = T if T < Ss else Ss
     for ch in range(c):
         for i in range(n):
             dst[ch, i] = src[ch, i]
