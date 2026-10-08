@@ -180,6 +180,28 @@ class Blosc2Backend:
 
                 store[node] = arr
 
+    @staticmethod
+    def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Sanitizes a metadata dictionary to prevent conflicts with blosc2's
+        reserved attribute keys.
+
+        The 'format' key is reserved by blosc2 to store the data type of the
+        attribute (e.g., 'dict', 'str'). We must rename it.
+        """
+        if metadata is None:
+            return None
+
+        # Create a copy to avoid modifying the original dictionary
+        sanitized = metadata.copy()
+
+        # The 'format' key is reserved by blosc2's vlmeta system.
+        # Rename it to avoid a RuntimeError.
+        if 'format' in sanitized:
+            sanitized['audio_format'] = sanitized.pop('format')
+
+        return sanitized
+
     def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_index: int, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
         """
         Write `data` (shape (C, S) or (S,)) into
@@ -248,8 +270,11 @@ class Blosc2Backend:
                 signal_saved = True
 
             if signal_saved:
-                signal_name = arr.attrs['tracks'][track_index]['signal_names'][signal_index]
-                arr.attrs[f'{track_index}_{signal_name}'] = metadata
+                # Sanitize metadata before setting it as an attribute
+                sanitized_metadata = self._sanitize_metadata(metadata)
+                if sanitized_metadata is not None:
+                    signal_name = arr.attrs['tracks'][track_index]['signal_names'][signal_index]
+                    arr.attrs[f'{track_index}_{signal_name}'] = sanitized_metadata
 
     def get_ndarray(self, engine: str, obj_idx: int) -> blosc2.NDArray:
         with self._lock:
