@@ -23,10 +23,6 @@ import numpy as np
 from dask import delayed, compute
 from dask import config as dask_config
 
-# Configure Dask to use more threads
-from dask import config as dask_config
-dask_config.set({'num_workers': 1024, 'optimization.fuse.active': True, 'optimization.fuse.max_depth': 10,})
-
 from pbrAudioCommon import EntityManager, debug_print, set_debug, set_debug_prefix
 
 from ..lib.backend import Blosc2Backend
@@ -41,7 +37,6 @@ class StorageEngine:
     objs_type: Optional[str] = None
     track_group: Optional[str] = None
     track_names: List[str] = field(default_factory=list)
-    signal_names: List[Any] = field(default_factory=list)
     signal_type: Optional[str] = None
     total_samples: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -57,12 +52,11 @@ class StorageEngine:
         set_debug_prefix(self.__class__.__name__)
         self.config = config
 
-    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, signal_names: List[Any] = None, metadata: Dict[str, Any] = None) -> None:
+    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, metadata: Dict[str, Any] = None) -> None:
         """
         Record the schema for a group of tracks. Does NOT allocate storage.
         Call `materialize()` afterwards to pre-allocate the NDArrays.
         """
-        signal_names = list(signal_names or [])
         self.collection = collection
         self.objs_type = objs_type
         self.engine = engine
@@ -70,7 +64,6 @@ class StorageEngine:
         self.track_names = list(track_names)
         self.signal_type = signal_type
         self.total_samples = int(total_samples)
-        self.signal_names = signal_names
         self.metadata = dict(metadata or {})
 
         # collect object indices from the entity manager
@@ -83,12 +76,13 @@ class StorageEngine:
         debug_print(
             f"register: engine={engine} collection={collection} "
             f"objects={len(self.obj_indices)} tracks={len(self.track_names)} "
-            f"signals={len(self.signal_names)} total_samples={self.total_samples}"
+            f"total_samples={self.total_samples}"
         )
 
     def materialize(self) -> None:
         """
-        Pre-allocate the blosc2.NDArrays for a object registered so far.
+        Pre-allocate the blosc2.NDArrays for objects registered so far.
+        Each object is created with a single signal slot per track.
         Idempotent — safe to call again after adding objects.
         """
         if self.engine is None or self.total_samples is None:
@@ -105,7 +99,6 @@ class StorageEngine:
             engine=self.engine,
             obj_indices=self.obj_indices,
             track_names=self.track_names,
-            signal_names=self.signal_names,
             total_samples=self.total_samples,
             signal_type=self.signal_type,
             metadata=self.metadata,
@@ -124,8 +117,8 @@ class StorageEngine:
                      the chunk is zero-padded to `total_samples` and placed
                      at [sample_start : sample_start + S]. Otherwise it is
                      written from index 0.
-        signal_name : if None, append a new signal slot; otherwise resolve
-                      to an existing slot by name.
+        signal_name : if None, appends a new signal slot; otherwise, finds or
+                      appends a signal slot with that name.
         """
         if self.backend is None:
             self.materialize()
@@ -137,25 +130,21 @@ class StorageEngine:
         if arr.ndim == 1:
             arr = arr.reshape(1, -1)
 
-        # resolve signal index
-        if signal_name is None:
-            raise ValueError("`signal_name` must be provided when writing to storage.")
-        else:
-            signal_index = self._resolve_signal_index(signal_name)
-            if signal_index is None:
-                # Todo: fallback for dynamic signals, but the current schema
-                #signal_index = len(self.signal_names) - 1
-                raise ValueError(f"Signal name '{signal_name}' not found in registered schema for track '{track_name}'.")
-
         # capture a snapshot so the delayed task doesn't close over `self`
         backend = self.backend
         engine = self.engine
         start = sample_start
 
-        task = delayed(backend.write_signal)(engine=engine, obj_idx=int(obj_idx), track_name=track_name, signal_index=int(signal_index), data=arr, metadata=metadata, sample_start=start)
+        task = delayed(backend.write_signal)(
+            engine=engine,
+            obj_idx=int(obj_idx),
+            track_name=track_name,
+            data=arr,
+            metadata=metadata,
+            sample_start=start,
+            signal_name=signal_name,
+        )
 
-#        # synchronous scheduler: runs in this thread, no GIL contention
-#        compute(task, scheduler="synchronous")
         compute(task)
 
     def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
@@ -163,12 +152,20 @@ class StorageEngine:
             self.materialize()
 
         track_index = self._resolve_track_index(track_name)
-        signal_index = self._resolve_signal_index(signal_name)
 
-        if track_index is not None and signal_index is not None:
-            backend = blosc2.TreeStore(self.tree_store_path, mmap_mode='r')
-            signal = backend.read_signal(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_index=signal_index, start=start, stop=stop)
-            backend.close()
+        if track_index is not None:
+            backend = self.backend
+            if backend is None:
+                 backend = Blosc2Backend.get(self.tree_store_path, mode="r")
+            
+            signal = backend.read_signal(
+                engine=engine,
+                obj_idx=obj_idx,
+                track_index=track_index,
+                signal_name=signal_name,
+                start=start,
+                stop=stop,
+            )
             return signal
         return None
 
@@ -181,16 +178,8 @@ class StorageEngine:
                 return i
         return None
 
-    def _resolve_signal_index(self, signal_name: Any) -> Optional[int]:
-        for i, name in enumerate(self.signal_names):
-            if name == signal_name:
-                return i
-            # allow tuple/list ranges to match by containment
-            if isinstance(name, (list, tuple)) and signal_name in name:
-                return i
-        return None
-
     def close(self) -> None:
         if self.backend is not None:
             self.backend.close()
             self.backend = None
+

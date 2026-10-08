@@ -24,9 +24,8 @@ import blosc2
 import numpy as np
 from numba import njit
 
-# Numba kernels — SIMD friendly, no parallel=True (no threads allowed).
 @njit(cache=True, fastmath=True, nogil=True)
-def _pad_into(dst: np.ndarray, src: np.ndarray, start: int) -> None:
+def _pad_into(dst: np.ndarray, src: np np.ndarray, start: int) -> None:
     """
     dst : (C, T)  float32, zero-initialised
     src : (C, S)  float32, S <= T - start
@@ -49,7 +48,7 @@ def _copy_into(dst: np.ndarray, src: np.ndarray) -> None:
     C, T = dst.shape
     Sc, Ss = src.shape
     c = C if C < Sc else Sc
-    n = T if T < Ss else Ss
+    n = T if T < < Ss else Ss
     for ch in range(c):
         for i in range(n):
             dst[ch, i] = src[ch, i]
@@ -59,12 +58,6 @@ class Blosc2Backend:
     """
     Single owner of a blosc2.TreeStore handle. All StorageEngine instances
     that target the same path go through the same backend instance.
-
-    Layout inside the TreeStore (matches StorageEngine.register):
-        /<engine>/<obj_idx>   ->  NDArray (n_tracks, n_signals, total_samples)
-                                   attrs: 'object'   -> object meta
-                                          'tracks'   -> list of track meta
-                                          '<track_name>' -> list of signal meta
     """
 
     _instances: Dict[str, "Blosc2Backend"] = {}
@@ -78,17 +71,11 @@ class Blosc2Backend:
         self._open()
 
     def _open(self) -> None:
-        # blosc2.TreeStore(path, mode=...)  — 'a' creates if missing.
-        # We open lazily and keep the handle for the process lifetime.
         with self._lock:
             if self._store is None:
-                if not os.path.exists(f"{self.path}/embed.b2e"):
-                    if not os.path.dirname(self.path):
-                        os.makedirs(self.path, exist_ok=True)
-                    _store = blosc2.TreeStore(self.path, mode='w')
-                    _store.close()
-                if os.path.dirname(self.path) and os.path.exists(f"{self.path}/embed.b2e"):
-                    self._store = blosc2.TreeStore(self.path, mode=self.mode)
+                if not os.path.exists(self.path):
+                    os.makedirs(self.path, exist_ok=True)
+                self._store = blosc2.TreeStore(self.path, mode=self.mode)
 
     @classmethod
     def get(cls, path: str, mode: str = "a") -> "Blosc2Backend":
@@ -125,13 +112,13 @@ class Blosc2Backend:
     def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
-    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], signal_names: List[List[Any]], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
+    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
         """
-        Pre-allocate one NDArray per object: (n_tracks, n_signals, total_samples).
+        Pre-allocate one NDArray per object with a single signal slot.
         Idempotent: if the node already exists we leave it alone.
         """
         n_tracks = len(track_names)
-        n_signals = len(signal_names[0])
+        n_signals = 1  # Start with one signal slot
         shape = (n_tracks, n_signals, total_samples)
 
         meta = dict(metadata or {})
@@ -152,7 +139,6 @@ class Blosc2Backend:
                     "track_names": list(track_names),
                     "total_samples": int(total_samples),
                     "n_tracks": n_tracks,
-                    "n_signals": n_signals,
                 }
 
                 # track-level meta
@@ -162,19 +148,17 @@ class Blosc2Backend:
                         {
                             "track_idx": t_idx,
                             "track_name": t_name,
-                            "n_signals": n_signals,
-                            "signal_names": list(signal_names[t_idx]),
+                            "signal_names": [None],  # Initially one unnamed signal
                         }
                     )
                     # signal-level meta, keyed by track name
                     arr.attrs[t_name] = [
                         {
-                            "signal_idx": s_idx,
-                            "signal_name": signal_names[t_idx][s_idx],
+                            "signal_idx": 0,
+                            "signal_name": None,
                             "signal_type": signal_type,
                             **meta,
                         }
-                        for s_idx in range(n_signals)
                     ]
                 arr.attrs["tracks"] = tracks_meta
 
@@ -182,35 +166,18 @@ class Blosc2Backend:
 
     @staticmethod
     def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """
-        Sanitizes a metadata dictionary to prevent conflicts with blosc2's
-        reserved attribute keys.
-
-        The 'format' key is reserved by blosc2 to store the data type of the
-        attribute (e.g., 'dict', 'str'). We must rename it.
-        """
         if metadata is None:
             return None
-
-        # Create a copy to avoid modifying the original dictionary
         sanitized = metadata.copy()
-
-        # The 'format' key is reserved by blosc2's vlmeta system.
-        # Rename it to avoid a RuntimeError.
         if 'format' in sanitized:
             sanitized['audio_format'] = sanitized.pop('format')
-
         return sanitized
 
-    def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_index: int, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
+    def write_signal(self, data: np.ndarray, engine: str, obj_idx: int, track_name: str, signal_name: Optional[Any] = None, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
         """
-        Write `data` (shape (C, S) or (S,)) into
-            /<engine>/<obj_idx>[track_idx, signal_index, :]
-        If sample_start is None, the data is written from index 0.
-        Otherwise the signal is zero-padded to total_samples and the chunk
-        is placed at [sample_start : sample_start + S].
+        Write `data` into a track's signal slot.
+        If `signal_name` is None or not found, a new signal slot is added.
         """
-        signal_saved = False
         with self._lock:
             store = self.store
             node = self._node_path(engine, obj_idx)
@@ -221,13 +188,8 @@ class Blosc2Backend:
             try:
                 track_index = list(obj_meta["track_names"]).index(track_name)
             except ValueError as exc:
-                raise KeyError(
-                    f"track_name {track_name!r} not registered for "
-                    f"engine={engine} obj_idx={obj_idx}"
-                ) from exc
+                raise KeyError(f"track_name {track_name!r} not registered for engine={engine} obj_idx={obj_idx}") from exc
 
-            C, T, S_total = arr.shape[1], arr.shape[2], arr.shape[2]
-            # arr shape is (n_tracks, n_signals, total_samples)
             total_samples = arr.shape[2]
 
             # normalise input to (C, S)
@@ -236,54 +198,88 @@ class Blosc2Backend:
             data = np.ascontiguousarray(data, dtype=np.float32)
             C_in, S_in = data.shape
 
+            # Get track metadata and find/create signal index
+            track_meta_list = arr.attrs['tracks']
+            track_meta = track_meta_list[track_index]
+            
+            if signal_name is None:
+                # Append a new signal
+                signal_index = len(track_meta['signal_names'])
+                track_meta['signal_names'].append(None) # Append unnamed signal
+                arr.attrs['tracks'] = track_meta_list # Update attrs
+                
+                # Resize the NDArray
+                new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
+                arr.resize(new_shape)
+                
+                # Add signal-specific metadata
+                signal_meta_list = arr.attrs[track_name]
+                signal_meta_list.append({"signal_idx": signal_index, "signal_name": None})
+                arr.attrs[track_name] = signal_meta_list
+
+            else:
+                try:
+                    signal_index = track_meta['signal_names'].index(signal_name)
+                except ValueError:
+                    # Not found, append a new signal with the given name
+                    signal_index = len(track_meta['signal_names'])
+                    track_meta['signal_names'].append(signal_name)
+                    arr.attrs['tracks'] = track_meta_list
+                    
+                    # Resize the NDArray
+                    new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
+                    arr.resize(new_shape)
+
+                    # Add signal-specific metadata
+                    signal_meta_list = arr.attrs[track_name]
+                    signal_meta_list.append({"signal_idx": signal_index, "signal_name": signal_name})
+                    arr.attrs[track_name] = signal_meta_list
+
+            # Now write the data to the resolved/created signal_index
             if sample_start is None:
-                # contiguous write from 0; must fit in total_samples
                 if S_in > total_samples:
                     data = data[:, :total_samples]
-                    S_in = total_samples
-                # read existing row, patch, write back
                 row = np.asarray(arr[track_index, signal_index, :], dtype=np.float32).reshape(1, -1)
-                # row shape is (1, total_samples); broadcast if C_in > 1
                 if C_in == 1:
                     _copy_into(row, data)
                 else:
-                    # multichannel into mono storage: downmix by first channel
-                    _copy_into(row, data[:1, :])
+                    _copy_into(row, data[:1, :]) # Downmixmix to mono
                 arr[track_index, signal_index, :] = row[0]
-                signal_saved = True
             else:
-                # padded chunk write
                 if sample_start < 0:
                     raise ValueError("sample_start must be >= 0")
                 if sample_start >= total_samples:
-                    return  # nothing to write
-
-                # build a zeroed (C_in, total_samples) buffer
-                buf = np.zeros((C_in, total_samples), dtype=np.float32)
-                _pad_into(buf, data, int(sample_start))
-
-                # write each channel; storage is mono per signal, so we take
-                # channel 0 unless the caller explicitly passes multichannel
-                # and storage was allocated multichannel — but our schema is
-                # mono-per-signal, so we downmix by channel 0.
+                    return
+                buf = np.zeros((1, total_samples), dtype=np.float32) # Always mono for storage
+                _pad_into(buf, data[:1, :], int(sample_start))
                 arr[track_index, signal_index, :] = buf[0]
-                signal_saved = True
 
-            if signal_saved:
-                # Sanitize metadata before setting it as an attribute
-                sanitized_metadata = self._sanitize_metadata(metadata)
-                if sanitized_metadata is not None:
-                    signal_name = arr.attrs['tracks'][track_index]['signal_names'][signal_index]
-                    arr.attrs[f'{track_index}_{signal_name}'] = sanitized_metadata
+            # Update metadata if provided
+            sanitized_metadata = self._sanitize_metadata(metadata)
+            if sanitized_metadata is not None:
+                signal_meta_list = arr.attrs[track_name]
+                # Update the specific signal's metadata
+                signal_meta_list[signal_index].update(sanitized_metadata)
+                arr.attrs[track_name] = signal_meta_list
+
 
     def get_ndarray(self, engine: str, obj_idx: int) -> blosc2.NDArray:
         with self._lock:
             return self.store[self._node_path(engine, obj_idx)]
 
-    def read_signal(self, engine: str, obj_idx: int, track_index: int, signal_index: int)-> np.ndarray:
+    def read_signal(self, engine: str, obj_idx: int, track_index: int, signal_name: str, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
         with self._lock:
             arr = self.store[self._node_path(engine, obj_idx)]
-            sl = arr[track_index, signal_index,:]
+            
+            # Find signal index by name
+            track_meta = arr.attrs['tracks'][track_index]
+            try:
+                signal_index = track_meta['signal_names'].index(signal_name)
+            except ValueError:
+                print(f"Warning: signal_name '{signal_name}' not found in track {track_meta['track_name']}.")
+                return None
+
+            sl = arr[track_index, signal_index, start:stop]
             return np.asarray(sl, dtype=np.float32).reshape(1, -1)
 
     def attrs(self, engine: str, obj_idx: int) -> Dict[str, Any]:
@@ -302,3 +298,4 @@ class Blosc2Backend:
                     except ValueError:
                         continue
             return sorted(out)
+
