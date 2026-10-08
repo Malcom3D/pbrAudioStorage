@@ -71,7 +71,7 @@ class StorageEngine:
         self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
 
         # resolve the on-disk TreeStore path
-        self.tree_store_path = f"{self.config.storage.root_path}/{self.collection}/{self.engine}.b2d"
+        self.tree_store_path = f"{self.config.storage.root_path}/{self.collection}.b2d"
 
         debug_print(
             f"register: engine={engine} collection={collection} "
@@ -147,7 +147,7 @@ class StorageEngine:
 
         compute(task)
 
-    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
+    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> np.ndarray:
         if engine == self.engine and self.backend is None:
             self.materialize()
 
