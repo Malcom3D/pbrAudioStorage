@@ -38,6 +38,7 @@ class StorageEngine:
     track_group: Optional[str] = None
     track_names: List[str] = field(default_factory=list)
     signal_type: Optional[str] = None
+    signal_names: Optional[str] = None
     total_samples: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -52,7 +53,7 @@ class StorageEngine:
         set_debug_prefix(self.__class__.__name__)
         self.config = config
 
-    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, metadata: Dict[str, Any] = None) -> None:
+    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, signal_names: List[List[str]] = None, metadata: Dict[str, Any] = None) -> None:
         """
         Record the schema for a group of tracks. Does NOT allocate storage.
         Call `materialize()` afterwards to pre-allocate the NDArrays.
@@ -62,6 +63,7 @@ class StorageEngine:
         self.engine = engine
         self.track_group = track_group
         self.track_names = list(track_names)
+        self.signal_names = list(signal_names)
         self.signal_type = signal_type
         self.total_samples = int(total_samples)
         self.metadata = dict(metadata or {})
@@ -99,8 +101,9 @@ class StorageEngine:
             engine=self.engine,
             obj_indices=self.obj_indices,
             track_names=self.track_names,
-            total_samples=self.total_samples,
+            signal_names=self.signal_names,
             signal_type=self.signal_type,
+            total_samples=self.total_samples,
             metadata=self.metadata,
         )
 
