@@ -63,7 +63,7 @@ class StorageEngine:
         self.engine = engine
         self.track_group = track_group
         self.track_names = list(track_names)
-        self.signal_names = list(signal_names)
+        self.signal_names = list(signal_names) if signal_names is not None else None
         self.signal_type = signal_type
         self.total_samples = int(total_samples)
         self.metadata = dict(metadata or {})
