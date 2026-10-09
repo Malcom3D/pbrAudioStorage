@@ -24,6 +24,8 @@ import blosc2
 import numpy as np
 from numba import njit
 
+from pbrAudioCommon import _count_deep
+
 @njit(cache=True, fastmath=True, nogil=True)
 def _pad_into(dst: np.ndarray, src: np.ndarray, start: int) -> None:
     """
@@ -114,13 +116,16 @@ class Blosc2Backend:
     def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
-    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], total_samples: int, signal_type: str, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
+    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], total_samples: int, signal_type: str, signal_names: List[List[str]] = None, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
         """
         Pre-allocate one NDArray per object with a single signal slot.
         Idempotent: if the node already exists we leave it alone.
         """
         n_tracks = len(track_names)
-        n_signals = 1  # Start with one signal slot
+        if signal_names is not None and not len(track_names) == len(signal_names):
+            print(f"Warning: The length of the signal_names list '{len(signal_names)}' is not a equal of the length of the track_names list '{len(track_names)}'. Start with one signal slot named 0")
+            signal_names = None
+        n_signals = _count_deep(signal_names) if signal_names is not None else 1 # Start with one signal slot
         shape = (n_tracks, n_signals, total_samples)
 
         meta = dict(metadata or {})
@@ -146,22 +151,33 @@ class Blosc2Backend:
                 # track-level meta
                 tracks_meta = []
                 for t_idx, t_name in enumerate(track_names):
-                    tracks_meta.append(
-                        {
-                            "track_idx": t_idx,
-                            "track_name": t_name,
-                            "signal_names": [None],  # Initially one unnamed signal
-                        }
-                    )
                     # signal-level meta, keyed by track name
-                    arr.attrs[t_name] = [
-                        {
-                            "signal_idx": 0,
-                            "signal_name": None,
-                            "signal_type": signal_type,
-                            **meta,
-                        }
-                    ]
+                    if signal_names is not None:
+                        tracks_meta.append(
+                            {
+                                "track_idx": t_idx,
+                                "track_name": t_name,
+                                "signal_names": signal_names[t_idx],
+                            }
+                        )
+                        for s_idx, signal_name in enumerate(signal_names[t_idx]):
+                            arr.attrs[t_name] = [
+                                {
+                                    "signal_idx": s_idx,
+                                    "signal_name": signal_name,
+                                    "signal_type": signal_type,
+                                    **meta,
+                                }
+                            ]
+                    elif signal_names is None:
+                        tracks_meta.append(
+                            {
+                                "track_idx": t_idx,
+                                "track_name": t_name,
+                                "signal_names": [],
+                                "signal_type": signal_type,
+                            }
+                        )
                 arr.attrs["tracks"] = tracks_meta
 
                 store[node] = arr
@@ -196,18 +212,19 @@ class Blosc2Backend:
             track_meta = track_meta_list[track_index]
             
             if signal_name is None:
-                # Append a new signal
                 signal_index = len(track_meta['signal_names'])
-                track_meta['signal_names'].append(None) # Append unnamed signal
+                if not signal_index == 0:
+                    # Resize the NDArray to append a new signal
+                    new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
+                    arr.resize(new_shape)
+
+                # Append a new signal metadata
+                track_meta['signal_names'].append(signal_index) # Append unnamed signal
                 arr.attrs['tracks'] = track_meta_list # Update attrs
-                
-                # Resize the NDArray
-                new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
-                arr.resize(new_shape)
                 
                 # Add signal-specific metadata
                 signal_meta_list = arr.attrs[track_name]
-                signal_meta_list.append({"signal_idx": signal_index, "signal_name": None})
+                signal_meta_list.append({"signal_idx": signal_index, "signal_name": signal_index})
                 arr.attrs[track_name] = signal_meta_list
 
             else:
