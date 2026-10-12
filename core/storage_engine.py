@@ -183,14 +183,7 @@ class StorageEngine:
             backend = Blosc2Backend.get(self.tree_store_path, mode="r")
 
         # Delegate the read and processing logic to the backend
-        return backend.read(
-            engine=engine,
-            obj_idx=obj_idx,
-            track_index=track_index,
-            signal_name=signal_name,
-            start=start,
-            stop=stop,
-        )
+        return backend.read(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_name=signal_name, start=start, stop=stop)
 
     def _resolve_track_index(self, track_name: Any) -> Optional[int]:
         for i, name in enumerate(self.track_names):

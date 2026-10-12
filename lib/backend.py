@@ -327,8 +327,8 @@ class Blosc2Backend:
                 try:
                     signal_index = signal_names.index(signal_name)
                 except ValueError:
-                    # If signal_name is provided but not found, we fall back to summing.
-                    print(f"Warning: signal_name '{signal_name}' not found in track '{track_name}'. Summing all signals.")
+                    print(f"Warning: signal_name '{signal_name}' not found in track '{track_name}'.")
+                    return
 
             # If a specific signal is found, read and return it
             if signal_index != -1:
