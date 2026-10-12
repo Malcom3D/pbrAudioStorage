@@ -94,12 +94,13 @@ class StorageEngine:
 
         # discover any newly-added objects
         objs_list = getattr(self.config, self.objs_type)
-        current = [objs_list[k].idx for k in range(len(objs_list))]
-        self.obj_indices = current
+        self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
+        self.obj_names = [objs_list[k].name for k in range(len(objs_list))]
 
         self.backend.materialize(
             engine=self.engine,
             obj_indices=self.obj_indices,
+            obj_names=self.obj_names,
             track_names=self.track_names,
             signal_names=self.signal_names,
             signal_type=self.signal_type,

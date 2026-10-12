@@ -116,7 +116,7 @@ class Blosc2Backend:
     def _node_path(engine: str, obj_idx: int) -> str:
         return f"/{engine}/{obj_idx}"
 
-    def materialize(self, engine: str, obj_indices: List[int], track_names: List[str], total_samples: int, signal_type: str, signal_names: List[List[str]] = None, metadata: Optional[Dict[str, Any]] = None, dtype: np.dtype = np.float32) -> None:
+    def materialize(self, engine: str, obj_indices: List[int], obj_names: List[str], track_names: List[str], total_samples: int, signal_type: str, signal_names: List[List[str]] = None, metadata: Optional[Dict[str, Any]] = [], dtype: np.dtype = np.float32) -> None:
         """
         Pre-allocate one NDArray per object with a single signal slot.
         Idempotent: if the node already exists we leave it alone.
@@ -133,7 +133,8 @@ class Blosc2Backend:
 
         with self._lock:
             store = self.store
-            for obj_idx in obj_indices:
+            for _idx, obj_name in enumerate(obj_names):
+                obj_idx = obj_indices[_idx]
                 node = self._node_path(engine, obj_idx)
                 if node in store:
                     continue
@@ -143,6 +144,7 @@ class Blosc2Backend:
                 # object-level meta
                 arr.attrs["object"] = {
                     "obj_idx": obj_idx,
+                    "obj_name": obj_name,
                     "track_names": list(track_names),
                     "total_samples": int(total_samples),
                     "n_tracks": n_tracks,
@@ -153,22 +155,24 @@ class Blosc2Backend:
                 for t_idx, t_name in enumerate(track_names):
                     # signal-level meta, keyed by track name
                     if signal_names is not None:
+                        signals = []
+                        for s_idx, signal_name in enumerate(signal_names[t_idx]):
+                            signals.append(
+                                {
+                                    "signal_idx": s_idx,
+                                    "signal_name": signal_name,
+                                    "signal_type": signal_type,
+                                    "metadata": metadata,
+                                }
+                            )
                         tracks_meta.append(
                             {
                                 "track_idx": t_idx,
                                 "track_name": t_name,
                                 "signal_names": signal_names[t_idx],
+                                "signals": signals,
                             }
                         )
-                        for s_idx, signal_name in enumerate(signal_names[t_idx]):
-                            arr.attrs[t_name] = [
-                                {
-                                    "signal_idx": s_idx,
-                                    "signal_name": signal_name,
-                                    "signal_type": signal_type,
-                                    **meta,
-                                }
-                            ]
                     elif signal_names is None:
                         tracks_meta.append(
                             {
@@ -176,6 +180,7 @@ class Blosc2Backend:
                                 "track_name": t_name,
                                 "signal_names": [],
                                 "signal_type": signal_type,
+                                "signals": [],
                             }
                         )
                 arr.attrs["tracks"] = tracks_meta
@@ -220,12 +225,17 @@ class Blosc2Backend:
 
                 # Append a new signal metadata
                 track_meta['signal_names'].append(signal_index) # Append unnamed signal
+                track_meta['signals'].append({
+                                    "signal_idx": signal_index,
+                                    "signal_name": signal_index,
+                                    "metadata": metadata,
+                                })
                 arr.attrs['tracks'] = track_meta_list # Update attrs
                 
-                # Add signal-specific metadata
-                signal_meta_list = arr.attrs[track_name]
-                signal_meta_list.append({"signal_idx": signal_index, "signal_name": signal_index})
-                arr.attrs[track_name] = signal_meta_list
+#                # Add signal-specific metadata
+#                signal_meta_list = arr.attrs['tracks'][track_index]['signal_names']
+#                signal_meta_list.append(signal_index)
+#                arr.attrs[track_name][track_index]['signal_names'] = signal_meta_list
 
             else:
                 try:
@@ -234,16 +244,21 @@ class Blosc2Backend:
                     # Not found, append a new signal with the given name
                     signal_index = len(track_meta['signal_names'])
                     track_meta['signal_names'].append(signal_name)
+                    track_meta['signals'].append({
+                                    "signal_idx": signal_index,
+                                    "signal_name": signal_name,
+                                    "metadata": metadata,
+                                })
                     arr.attrs['tracks'] = track_meta_list
                     
                     # Resize the NDArray
                     new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
                     arr.resize(new_shape)
 
-                    # Add signal-specific metadata
-                    signal_meta_list = arr.attrs[track_name]
-                    signal_meta_list.append({"signal_idx": signal_index, "signal_name": signal_name})
-                    arr.attrs[track_name] = signal_meta_list
+#                    # Add signal-specific metadata
+#                    signal_meta_list = arr.attrs[track_name]
+#                    signal_meta_list.append({"signal_idx": signal_index, "signal_name": signal_name})
+#                    arr.attrs[track_name] = signal_meta_list
 
             # Now write the data to the resolved/created signal_index
             if sample_start is None:
@@ -264,12 +279,12 @@ class Blosc2Backend:
                 _pad_into(buf, data[:1, :], int(sample_start))
                 arr[track_index, signal_index, :] = buf[0]
 
-            # Update metadata if provided
-            if metadata is not None:
-                signal_meta_list = arr.attrs[track_name]
-                # Update the specific signal's metadata
-                signal_meta_list[signal_index].update(metadata)
-                arr.attrs[track_name] = signal_meta_list
+#            # Update metadata if provided
+#            if metadata is not None:
+#                signal_meta_list = arr.attrs[track_name]
+#                # Update the specific signal's metadata
+#                signal_meta_list[signal_index].update(metadata)
+#                arr.attrs[track_name] = signal_meta_list
 
 
     def get_ndarray(self, engine: str, obj_idx: int) -> blosc2.NDArray:
