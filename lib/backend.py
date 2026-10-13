@@ -291,7 +291,7 @@ class Blosc2Backend:
         with self._lock:
             return self.store[self._node_path(engine, obj_idx)]
 
-    def read(self, engine: str, obj_idx: int, track_index: int, signal_name: Optional[str] = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
+    def read(self, engine: str, obj_idx: int, track_name: int, signal_name: Optional[str] = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
         """
         Reads a signal signal from a track. If signal_name is None or not found,
         it sums all signals in the track, applying a processing chain if specified
@@ -300,7 +300,7 @@ class Blosc2Backend:
         Args:
             engine: The name of the engine (e.g., 'physicsSolver').
             obj_idx: The object index.
-            track_index: The index of the track to read from.
+            track_name: The name of the track to read from.
             signal_name: The name of the specific signal to read. If None, all
                          signals in the track are combined.
             start: Start sample for partial reads.
@@ -317,9 +317,9 @@ class Blosc2Backend:
             arr = self.store[node_path]
 
             # Get track metadata
+            track_index = arr.attrs['object']['track_names'].index(track_name)
             track_meta = arr.attrs['tracks'][track_index]
             signal_names = track_meta.get('signal_names', [])
-            track_name = track_meta['track_name']
 
             # Find signal index by name if provided
             signal_index = -1
@@ -327,8 +327,7 @@ class Blosc2Backend:
                 try:
                     signal_index = signal_names.index(signal_name)
                 except ValueError:
-                    print(f"Warning: signal_name '{signal_name}' not found in track '{track_name}'.")
-                    return
+                    print(f"Warning: signal_name '{signal_name}' not found in track '{track_name}'. Returning the sum of all signals in the track")
 
             # If a specific signal is found, read and return it
             if signal_index != -1:

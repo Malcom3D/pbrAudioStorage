@@ -165,11 +165,11 @@ class StorageEngine:
         if engine == self.engine and self.backend is None:
             self.materialize()
 
-        # Resolve the track name to a numerical index
-        track_index = self._resolve_track_index(track_name)
-        if track_index is None:
-            debug_print(f"Track '{track_name}' not found in registered track names.")
-            return None
+#        # Resolve the track name to a numerical index
+#        track_index = self._resolve_track_index(track_name)
+#        if track_index is None:
+#            debug_print(f"Track '{track_name}' not found in registered track names.")
+#            return None
 
         # Get or create a backend instance for reading
         backend = self.backend
@@ -183,16 +183,16 @@ class StorageEngine:
             backend = Blosc2Backend.get(self.tree_store_path, mode="r")
 
         # Delegate the read and processing logic to the backend
-        return backend.read(engine=engine, obj_idx=obj_idx, track_index=track_index, signal_name=signal_name, start=start, stop=stop)
+        return backend.read(engine=engine, obj_idx=obj_idx, track_name=track_name, signal_name=signal_name, start=start, stop=stop)
 
-    def _resolve_track_index(self, track_name: Any) -> Optional[int]:
-        for i, name in enumerate(self.track_names):
-            if name == track_name:
-                return i
-            # allow tuple/list ranges to match by containment
-            if isinstance(name, (list, tuple)) and track_name in name:
-                return i
-        return None
+#    def _resolve_track_index(self, track_name: Any) -> Optional[int]:
+#        for i, name in enumerate(self.track_names):
+#            if name == track_name:
+#                return i
+#            # allow tuple/list ranges to match by containment
+#            if isinstance(name, (list, tuple)) and track_name in name:
+#                return i
+#        return None
 
     def close(self) -> None:
         if self.backend is not None:
