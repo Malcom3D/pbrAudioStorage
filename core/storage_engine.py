@@ -16,12 +16,13 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
+import os
 import numpy as np
 from dask import delayed, compute
 from dask import config as dask_config
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from pbrAudioCommon import EntityManager, debug_print, set_debug, set_debug_prefix
 
@@ -179,7 +180,7 @@ class StorageEngine:
             # in this session. We need to instantiate a backend for reading.
             if self.tree_store_path is None:
                 # resolve the on-disk TreeStore path
-                collection = config.system.collection
+                collection = self.config.system.collection
                 tree_store_path = f"{self.config.storage.root_path}/{collection}.b2d"
                 if not os.path.exists(tree_store_path):
                     # Cannot determine path.
