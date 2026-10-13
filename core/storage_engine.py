@@ -174,13 +174,18 @@ class StorageEngine:
         # Get or create a backend instance for reading
         backend = self.backend
         if backend is None:
+
             # This handles cases where we read from a store we haven't written to
             # in this session. We need to instantiate a backend for reading.
             if self.tree_store_path is None:
-                # Cannot determine path without a prior register() call
-                debug_print("Cannot read: tree_store_path is not set. Call register() first.")
-                return None
-            backend = Blosc2Backend.get(self.tree_store_path, mode="r")
+                # resolve the on-disk TreeStore path
+                collection = config.system.collection
+                tree_store_path = f"{self.config.storage.root_path}/{collection}.b2d"
+                if not os.path.exists(tree_store_path):
+                    # Cannot determine path.
+                    debug_print("Cannot read: tree_store_path is not found. If new call register() first.")
+                    return None
+            backend = Blosc2Backend.get(tree_store_path, mode="r")
 
         # Delegate the read and processing logic to the backend
         return backend.read(engine=engine, obj_idx=obj_idx, track_name=track_name, signal_name=signal_name, start=start, stop=stop)
