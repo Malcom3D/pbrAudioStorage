@@ -23,6 +23,7 @@ from typing import Sequence, Optional, Callable
 import numpy as np
 from audio_model import NodeKind, NodePath, AudioProps, new_id
 
+from pbrAudioSignals import SignalProcessor, IdentityProcessor
 
 # ---------- Signal processor protocol ----------
 
