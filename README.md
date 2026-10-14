@@ -1,14 +1,15 @@
 pbrAudioStorage
 ================
 
-High performance unlimited Multitrack RAW Audio Data Storage solution with non-desctructive signal processing and DAG data structure for the physically based rendered Audio suite pbrAudio.
+High performance unlimited Multitrack RAW Audio Data Storage solution for the physically based rendered Audio suite pbrAudio.
 
 ## Features
 Elegantly solve pbrAudio tracks explosion.
 Handle more than 18 quintillion tracks per file.
+DAG data structure.
 Lossless RAW audio data compression algorithm.
 Fast multi-threaded de/compression.
-Non-destructive signal processing in the de/compression loop with blosc2 JIT.
+Non-destructive signal processing support in the de/compression loop with blosc2 JIT.
 
 ## License
 
@@ -25,3 +26,7 @@ If you use this software in your research, please cite:
   year = {2025},
   url = {https://github.com/malcom3d/pbrAudio}
 }
+
+## Supporters & Credits
+
+Thanks to everyone who has supported pbrAudio! See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for the full list.
