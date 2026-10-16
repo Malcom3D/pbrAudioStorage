@@ -133,19 +133,9 @@ class StorageEngine:
         config = self.entity_manager.get('config')
         objs = getattr(config, schema.objs_type, [])
         for obj in objs:
-            obj_schema_dict = {
-                "collection": collection,
-                "engine": engine,
-                "obj_idx": int(obj.idx),
-                "objs_type": objs_type,
-                "name": str(obj.name),
-                "signal_type": signal_type,
-                "total_samples": int(total_samples),
-                "track_names": list(track_names),
-                "track_behaviors": dict(track_behaviors or {}),
-                "track_kinds": dict(track_kinds or {}),
-                "metadata": dict(metadata or {}),
-            }
+            obj_schema_dict = schema.to_dict()  # full AudioSchema as dict
+            obj_schema_dict["obj_idx"] = int(obj.idx)   # extra, ignored by filter
+            obj_schema_dict["name"] = str(obj.name)     # extra, ignored by filter
             self._backend.register_object(int(obj.idx), obj_schema_dict)
 
         return schema
@@ -159,46 +149,22 @@ class StorageEngine:
         if self._backend is None:
             raise StorageError("no backend initialized")
 
-        config = self.entity_manager.get('config')
-        # Walk every registered schema by re-reading from the backend.
-        # We keep the schemas on the backend side; iterate per object here.
-        for obj in getattr(config, "objects", []):
-            obj_schema_dict = {
-                "collection": self.collection,
-                "engine": None,  # filled per-engine below
-                "obj_idx": int(obj.idx),
-            }
-            # We must know the engines under which this object was registered.
-            # Backend tracks them via (engine, obj_idx) keys -> walk store.
-            prefix = f"{self.collection}/"
-            for key in list(self._backend._store.keys()):
-                if not key.startswith(prefix):
-                    continue
-                tail = key[len(prefix):]
-                if "/" not in tail:
-                    continue
-                eng, rest = tail.split("/", 1)
-                if rest.lstrip("-").isdigit() and int(rest) == int(obj.idx):
-                    # already materialized
-                    pass
-            # If not materialized at all, materialize using the *last* schema
-            # registered for this object:
-            for (eng, o_idx), schema in self._backend._schemas.items():
-                if int(o_idx) != int(obj.idx):
-                    continue
-                try:
-                    self._backend.materialize({
-                        "collection": self.collection,
-                        "engine": eng,
-                        "obj_idx": int(obj.idx),
-                        "name": str(obj.name),
-                        "signal_type": schema.signal_type,
-                        "total_samples": schema.total_samples,
-                        "track_names": schema.track_names,
-                        "metadata": schema.metadata,
-                    })
-                except BackendError:
-                    pass
+        for (engine, obj_idx), schema in list(self._backend._schemas.items()):
+            config = self.entity_manager.get('config')
+            obj = next((o for o in getattr(config, schema.objs_type, [])
+                        if int(o.idx) == int(obj_idx)), None)
+            if obj is None:
+                continue
+            schema_dict = schema.to_dict()
+            schema_dict.update({
+                "obj_idx": int(obj_idx),
+                "name": str(obj.name),
+                "engine": engine,
+            })
+            try:
+                self._backend.materialize(schema_dict)
+            except BackendError:
+                pass
 
     # ------------------------------------------------------------------
     def write(self,
