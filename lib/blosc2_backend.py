@@ -32,7 +32,7 @@ from dask import delayed, compute
 from dask import config as dask_config
 dask_config.set({'num_workers': 1024, 'optimization.fuse.active': True, 'optimization.fuse.max_depth': 10,})
 
-from ..core.audio_data_type import (
+from ..lib.audio_data_type import (
     AudioDataType,
     DataTypeKind,
     DefaultBehavior,
@@ -604,7 +604,7 @@ class Blosc2Backend(BackendBase):
         track_arrays = []
         for ti, t_meta in enumerate(tracks_meta):
             t_node = AudioDataType.from_dict(t_meta)
-            sigs = signals_meta[[ti]
+            sigs = signals_meta[ti]
             sig_arrays = [data[0, s["id"], :].reshape(1, -1).astype(np.float32)
                           for s in sigs]
             combined_track = _stack_signals(sig_arrays, t_node.default_behavior)
@@ -806,7 +806,7 @@ class Blosc2Backend(BackendBase):
             },
             "collections": {self.collection: {}},
             "engines": {},
-            " "objects": {},
+            "objects": {},
         }
 
         prefix = f"{self.collection}/"
@@ -844,7 +844,7 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     # edit_tree (JSON-Patch subset)
     # ------------------------------------------------------------------
-    def edit_tree(self, payload: Any) -> Dict[str, Any Any]:
+    def edit_tree(self, payload: Any) -> Dict[str, Any]:
         """
         Apply a JSON-Patch subset to the metadata tree stored in attrs.
 
@@ -1047,7 +1047,7 @@ class Blosc2Backend(BackendBase):
             else:
                 cur[last] = value
         elif isinstance(cur, list):
-                       try:
+            try:
                 idx = int(last)
             except ValueError:
                 raise PatchError(f"invalid list index {last!r}")

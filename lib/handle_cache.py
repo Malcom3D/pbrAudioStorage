@@ -35,7 +35,7 @@ class HandleCache:
 
     def __init__(self, capacity: int = 8) -> None:
         self._cap = capacity
-        self._lru: "OrderedDict[str, blosc2.DictStore]" = Ordered OrderedDict()
+        self._lru: "OrderedDict[str, blosc2.DictStore]" = OrderedDict()
 
     # ------------------------------------------------------------------
     def get(self, path: str, mode: str = "a") -> blosc2.DictStore:

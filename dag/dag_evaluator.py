@@ -54,7 +54,7 @@ class DagEvaluator:
         Evaluate the sub-DAG rooted at ``root`` and return the ndarray result.
         Sources are returned as-is; processors are applied in topological order.
         """
-               order = self.builder.compile(roots=[root])
+        order = self.builder.compile(roots=[root])
         cache: Dict[int, np.ndarray] = {}
 
         for nid in order:
