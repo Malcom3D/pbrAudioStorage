@@ -52,7 +52,9 @@ class HandleCache:
             except Exception:
                 pass
 
-        store = blosc2.DictStore(urlpath=path, mode=mode)
+        if not os.path.exists(path):
+            mode='w'
+        store = blosc2.DictStore(localpath=path, mode=mode)
         self._lru[path] = store
         return store
 
