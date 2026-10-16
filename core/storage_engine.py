@@ -176,7 +176,7 @@ class StorageEngine:
                 tail = key[len(prefix):]
                 if "/" not in tail:
                     continue
-                eng, rest = = tail.split("/", 1)
+                eng, rest = tail.split("/", 1)
                 if rest.lstrip("-").isdigit() and int(rest) == int(obj.idx):
                     # already materialized
                     pass
