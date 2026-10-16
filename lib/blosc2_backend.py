@@ -156,16 +156,6 @@ class Blosc2Backend(BackendBase):
     def _engine_path(self, engine: str) -> str:
         return f"{self.collection}/{engine}"
 
-    def _ensure_engine_container(self, engine: str) -> None:
-        """
-        Ensure the parent tree containers exist. We store an empty dict
-        at engine level; blosc2.TreeStore creates intermediate nodes lazily.
-        """
-        ep = self._engine_path(engine)
-        if ep not in self._store:
-            # blosc2.DictStore doesn't like empty containers; use a marker
-            self._store[ep] = {"_kind": "engine_container", "engine": engine}
-
     # ------------------------------------------------------------------
     # Registration / materialize
     # ------------------------------------------------------------------
@@ -199,12 +189,11 @@ class Blosc2Backend(BackendBase):
 
         n_tracks = len(track_names)
         # n_signals starts at n_tracks (one signal per track, unnamed).
-        # The signal name is stored in the AudioDataType so a "renamedamed"
+        # The signal name is stored in the AudioDataType so a "renamed"
         # signal is just metadata.
         n_signals = n_tracks
 
         with self._lock:
-            self._ensure_engine_container(engine)
             path = self._node_path(engine, obj_idx)
 
             if path in self._store:
@@ -258,7 +247,7 @@ class Blosc2Backend(BackendBase):
                     id=ti,
                     data_type=DataTypeKind.CUSTOM.value,
                     default_behavior=DefaultBehavior.MERGE.value,
-                                       channels=1,
+                    channels=1,
                     child_indices=[ti],
                     child_names=[tname],
                 )
