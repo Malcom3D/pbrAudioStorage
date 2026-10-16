@@ -16,21 +16,48 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-__version__ = "0.0.10"
+__version__ = "0.1.0"
 __author__ = "Malcom3D"
-__description__ = "High performance unlimited Multitrack RAW Audio Data Storage solution with non-desctructive signal processing and DAG data structure"
+__description__ = "High performance near-infinite multitrack raw audio storage with non-destructive signal processing on a DAG."
 
-import os, sys
+import os
 import numpy as np
 
 decimals = 18
 np.set_printoptions(precision=decimals, floatmode='fixed', threshold=np.inf)
 
 from .core.storage_engine import StorageEngine
-from .lib.backend import Blosc2Backend
+from .lib.audio_data_type import AudioDataType, DataTypeKind, DefaultBehavior
+from .lib.schema import AudioSchema, validate_schema
+from .lib.backend import BackendBase
+from .lib.blosc2_backend import Blosc2Backend
+from .dag.dag_node import DagNode
+from .dag.dag_builder import DagBuilder
+from .dag.dag_evaluator import DagEvaluator
+from .utils.errors import (
+    StorageError,
+    SchemaError,
+    BackendError,
+    DagError,
+    PatchError,
+)
 
 __all__ = [
-    'StorageEngine',
+    "AudioDataType",
+    "DataTypeKind",
+    "DefaultBehavior",
+    "AudioSchema",
+    "validate_schema",
+    "StorageEngine",
+    "BackendBase",
     "Blosc2Backend",
+    "DagNodeNode",
+    "DagBuilder",
+    "DagEvaluator",
+    "StorageError",
+    "SchemaError",
+    "BackendError",
+    "DagError",
+    "PatchError",
 ]
 

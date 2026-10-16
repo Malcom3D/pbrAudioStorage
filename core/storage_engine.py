@@ -16,191 +16,284 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from __future__ import annotations
+
 import os
 import numpy as np
-from dask import delayed, compute
-from dask import config as dask_config
-
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 
-from pbrAudioCommon import EntityManager, debug_print, set_debug, set_debug_prefix
+from ..lib.schema import AudioSchema, validate_schema
+from ..lib.audio_data_type import AudioDataType, DataTypeKind, DefaultBehavior
+from ..lib.backend import BackendBase
+from ..lib.blosc2_backend import Blosc2Backend
+from ..utils.errors import StorageError, BackendError
 
-from ..lib.backend import Blosc2Backend
 
+# ---------------------------------------------------------------------------
+_BACKENDS: Dict[str, Type[BackendBase]] = {
+    "blosc2": Blosc2Backend,
+}
+
+
+def register_backend(name: str, cls: Type[BackendBase]) -> None:
+    _BACKENDS[name] = cls
+
+
+# ---------------------------------------------------------------------------
 @dataclass
 class StorageEngine:
-    entity_manager: EntityManager
+    """
+    Backend-agnostic front-end for pbrAudioStorage.
 
-    # populated by register()
-    engine: Optional[str] = None
-    collection: Optional[str] = None
-    objs_type: Optional[str] = None
-    track_group: Optional[str] = None
-    track_names: List[str] = field(default_factory=list)
-    signal_type: Optional[str] = None
-    signal_names: Optional[str] = None
-    total_samples: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    Parameters
+    ----------
+    entity_manager : EntityManager
+        Used to read SystemConfig at init.
+    backend : str | BackendBase
+        Either a registered backend name ("blosc2", "zarr", ...) or an
+        already-constructed BackendBase instance.
+    urlpath : str, optional
+        Storage file/dir. Defaults to ``<cache_path>/storage``.
+    """
+    entity_manager: Any
+    backend: Any = "blosc2"
+    urlpath: Optional[str] = None
 
-    # populated by materialize()
-    backend: Optional[Blosc2Backend] = None
-    tree_store_path: Optional[str] = None
-    obj_indices: List[int] = field(default_factory=list)
+    # runtime
+    _backend: Optional[BackendBase] = field(default=None, init=False)
+    tree_store_path: Optional[str] = field(default=None, init=False)
 
+    # ------------------------------------------------------------------
     def __post_init__(self):
-        config = self.entity_manager.get("config")
-        set_debug(config.system.debug)
-        set_debug_prefix(self.__class__.__name__)
-        self.config = config
+        config = self.entity_manager.get('config')
 
-    def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: List[str], signal_type: str, total_samples: int, signal_names: List[List[str]] = None, metadata: Dict[str, Any] = None) -> None:
+        # resolve url
+        if self.urlpath is None:
+            storage_cfg = getattr(config, "storage", None)
+            root = getattr(storage_cfg, "root_path", None) or \
+                   f"{config.system.cache_path}/storage"
+            backend_name = getattr(storage_cfg, "backend", "blosc2")
+            self.urlpath = root
+            if isinstance(self.backend, str):
+                self.backend = backend_name
+        self.tree_store_path = self.urlpath
+
+        # collection label
+        self.collection = getattr(config.system, "collection", None) or "scene"
+
+        # instantiate backend
+        if isinstance(self.backend, str):
+            cls = _BACKENDS.get(self.backend)
+            if cls is None:
+                raise StorageError(f"unknown backend {self.backend!r}; "
+                                   f"known: {sorted(_BACKENDS)}")
+            self._backend = cls(urlpath=self.urlpath, collection=self.collection)
+        elif isinstance(self.backend, BackendBase):
+            self._backend = self.backend
+        else:
+            raise StorageError("backend must be a name or BackendBase instance")
+
+    # ------------------------------------------------------------------
+    def register(self,
+                 collection: str,
+                 objs_type: str,
+                 engine: str,
+                 track_group: str,
+                 track_names: Sequence[str],
+                 signal_type: str,
+                 total_samples: int,
+                 metadata: Optional[Dict[str, Any]] = None,
+                 track_behaviors: Optional[Dict[str, str]] = None,
+                 track_kinds: Optional[Dict[str, str]] = None,
+                 track_force_source: Optional[Dict[str, str]] = None,
+                 ) -> AudioSchema:
         """
-        Record the schema for a group of tracks. Does NOT allocate storage.
-        Call `materialize()` afterwards to pre-allocate the NDArrays.
+        Register an audio data schema.
+
+        Called by physicsEngine._register_storage_schema, rigidBodyEngine,
+        and any future engine. Returns the validated AudioSchema.
         """
-        self.collection = collection
-        self.objs_type = objs_type
-        self.engine = engine
-        self.track_group = track_group
-        self.track_names = list(track_names)
-        self.signal_names = list(signal_names) if signal_names is not None else None
-        self.signal_type = signal_type
-        self.total_samples = int(total_samples)
-        self.metadata = dict(metadata or {})
-
-        # collect object indices from the entity manager
-        objs_list = getattr(self.config, objs_type)
-        self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
-
-        # resolve the on-disk TreeStore path
-        self.tree_store_path = f"{self.config.storage.root_path}/{self.collection}.b2d"
-
-        debug_print(
-            f"register: engine={engine} collection={collection} "
-            f"objects={len(self.obj_indices)} tracks={len(self.track_names)} "
-            f"total_samples={self.total_samples}"
+        schema = AudioSchema(
+            collection=collection,
+            engine=engine,
+            objs_type=objs_type,
+            track_group=track_group,
+            track_names=list(track_names),
+            signal_type=signal_type,
+            total_samples=int(total_samples),
+            metadata=dict(metadata or {}),
+            track_behaviors=dict(track_behaviors or {}),
+            track_kinds=dict(track_kinds or {}),
+            track_force_source=dict(track_force_source or {}),
         )
+        validate_schema(schema)
 
+        # register one schema descriptor per object of objs_type
+        config = self.entity_manager.get('config')
+        objs = getattr(config, schema.objs_type, [])
+        for obj in objs:
+            obj_schema_dict = {
+                "collection": collection,
+                "engine": engine,
+                "obj_idx": int(obj.idx),
+                "name": str(obj.name),
+                "signal_type": signal_type,
+                "total_samples": int(total_samples),
+                "track_names": list(track_names),
+                "track_behaviors": dict(track_behaviors or {}),
+                "track_kinds": dict(track_kinds or {}),
+                "metadata": dict(metadata or {}),
+            }
+            self._backend.register_object(int(obj.idx), obj_schema_dict)
+
+        return schema
+
+    # ------------------------------------------------------------------
     def materialize(self) -> None:
         """
-        Pre-allocate the blosc2.NDArrays for objects registered so far.
-        Each object is created with a single signal slot per track.
-        Idempotent — safe to call again after adding objects.
+        Physically pre-allocate NDArrays for every registered object.
+        Idempotent: objects already materialized are skipped by the backend.
         """
-        if self.engine is None or self.total_samples is None:
-            raise RuntimeError("materialize() called before register().")
+        if self._backend is None:
+            raise StorageError("no backend initialized")
 
-        self.backend = Blosc2Backend.get(self.tree_store_path, mode="a")
+        config = self.entity_manager.get('config')
+        # Walk every registered schema by re-reading from the backend.
+        # We keep the schemas on the backend side; iterate per object here.
+        for obj in getattr(config, "objects", []):
+            obj_schema_dict = {
+                "collection": self.collection,
+                "engine": None,  # filled per-engine below
+                "obj_idx": int(obj.idx),
+            }
+            # We must know the engines under which this object was registered.
+            # Backend tracks them via (engine, obj_idx) keys -> walk store.
+            prefix = f"{self.collection}/"
+            for key in list(self._backend._store.keys()):
+                if not key.startswith(prefix):
+                    continue
+                tail = key[len(prefix):]
+                if "/" not in tail:
+                    continue
+                eng, rest = = tail.split("/", 1)
+                if rest.lstrip("-").isdigit() and int(rest) == int(obj.idx):
+                    # already materialized
+                    pass
+            # If not materialized at all, materialize using the *last* schema
+            # registered for this object:
+            for (eng, o_idx), schema in self._backend._schemas.items():
+                if int(o_idx) != int(obj.idx):
+                    continue
+                try:
+                    self._backend.materialize({
+                        "collection": self.collection,
+                        "engine": eng,
+                        "obj_idx": int(obj.idx),
+                        "name": str(obj.name),
+                        "signal_type": schema.signal_type,
+                        "total_samples": schema.total_samples,
+                        "track_names": schema.track_names,
+                        "metadata": schema.metadata,
+                    })
+                except BackendError:
+                    pass
 
-        # discover any newly-added objects
-        objs_list = getattr(self.config, self.objs_type)
-        self.obj_indices = [objs_list[k].idx for k in range(len(objs_list))]
-        self.obj_names = [objs_list[k].name for k in range(len(objs_list))]
-
-        self.backend.materialize(
-            engine=self.engine,
-            obj_indices=self.obj_indices,
-            obj_names=self.obj_names,
-            track_names=self.track_names,
-            signal_names=self.signal_names,
-            signal_type=self.signal_type,
-            total_samples=self.total_samples,
-            metadata=self.metadata,
-        )
-
-        debug_print(
-            f"materialize: allocated {len(self.obj_indices)} object(s) "
-            f"at {self.tree_store_path}"
-        )
-
-    def write(self, audio_data: np.ndarray, obj_idx: int, track_name: str, signal_name: Optional[Any] = None, metadata: Optional[Dict[str, Any]] = None, sample_start: Optional[int] = None) -> None:
+    # ------------------------------------------------------------------
+    def write(self,
+              audio_data: np.ndarray,
+              obj_idx: int,
+              track_name: str,
+              sample_start: int = 0,
+              engine: str = None,
+              signal_name: Optional[str] = None,
+              signal_metadata: Optional[Dict[str, Any]] = None,
+              metadata: Optional[Dict[str, Any]] = None) -> None:
         """
-        Offload a write to the backend via dask.delayed.
+        Store one chunk or one full signal.
 
-        audio_data : (C, S) or (S,) float array. If `sample_start` is given,
-                     the chunk is zero-padded to `total_samples` and placed
-                     at [sample_start : sample_start + S]. Otherwise it is
-                     written from index 0.
-        signal_name : if None, appends a new signal slot; otherwise, finds or
-                      appends a signal slot with that name.
+        The engine defaults to the single registered engine for this obj_idx.
         """
-        if self.backend is None:
-            self.materialize()
+        if self._backend is None:
+            raise StorageError("no backend initialized")
 
-        if audio_data is None:
-            return
+        if engine is None:
+            engine = self._infer_engine(int(obj_idx))
+            if engine is None:
+                raise BackendError(f"no engine registered for obj {obj_idx}")
 
-        arr = np.ascontiguousarray(audio_data, dtype=np.float32)
-        if arr.ndim == 1:
-            arr = arr.reshape(1, -1)
-
-        # capture a snapshot so the delayed task doesn't close over `self`
-        backend = self.backend
-        engine = self.engine
-        start = sample_start
-
-        task = delayed(backend.write_signal)(
+        self._backend.write(
             engine=engine,
             obj_idx=int(obj_idx),
             track_name=track_name,
-            data=arr,
-            metadata=metadata,
-            sample_start=start,
+            audio_data=audio_data,
+            sample_start=int(sample_start),
             signal_name=signal_name,
+            signal_metadata=signal_metadata,
+            metadata=metadata,
         )
 
-        compute(task)
-
-    def read(self, engine: str, obj_idx: int, track_name: str, signal_name: str = None, start: int = 0, stop: Optional[int] = None) -> Optional[np.ndarray]:
+    # ------------------------------------------------------------------
+    def read(self,
+             engine: Optional[str] = None,
+             obj_idx: Optional[int] = None,
+             track_name: Optional[str] = None,
+             signal_name: Optional[str] = None,
+             unprocessed: bool = False,
+             side_channels: Optional[Dict[str, np.ndarray]] = None,
+             ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
-        Reads data from the storage backend.
-
-        If `signal_name` is provided, it reads that specific signal.
-        If `signal_name` is None or not found, it returns a mixed signal
-        (e.g., sum) of all signals in the track, as defined by the backend's
-        processing rules.
+        Read raw (unprocessed=True) or DAG-processed (unprocessed=False).
+        Returns (audio_ndarray, attrs_tree_dict).
         """
-        # If the engine matches this instance and the backend isn't set up,
-        # materialize it to ensure it's ready for reading.
-        if engine == self.engine and self.backend is None:
-            self.materialize()
+        if self._backend is None:
+            raise StorageError("no backend initialized")
+        return self._backend.read(
+            engine=engine,
+            obj_idx=obj_idx,
+            track_name=track_name,
+            signal_name=signal_name,
+            unprocessed=unprocessed,
+            side_channels=side_channels,
+        )
 
-#        # Resolve the track name to a numerical index
-#        track_index = self._resolve_track_index(track_name)
-#        if track_index is None:
-#            debug_print(f"Track '{track_name}' not found in registered track names.")
-#            return None
+    # ------------------------------------------------------------------
+    def read_tree(self) -> Dict[str, Any]:
+        if self._backend is None:
+            raise StorageError("no backend initialized")
+        return self._backend.read_tree()
 
-        # Get or create a backend instance for reading
-        backend = self.backend
-        if backend is None:
+    # ------------------------------------------------------------------
+    def edit_tree(self, payload: Any) -> Dict[str, Any]:
+        if self._backend is None:
+            raise StorageError("no backend initialized")
+        return self._backend.edit_tree(payload)
 
-            # This handles cases where we read from a store we haven't written to
-            # in this session. We need to instantiate a backend for reading.
-            if self.tree_store_path is None:
-                # resolve the on-disk TreeStore path
-                collection = self.config.system.collection
-                tree_store_path = f"{self.config.storage.root_path}/{collection}.b2d"
-                if not os.path.exists(tree_store_path):
-                    # Cannot determine path.
-                    debug_print("Cannot read: tree_store_path is not found. If new call register() first.")
-                    return None
-            backend = Blosc2Backend.get(tree_store_path, mode="r")
-
-        # Delegate the read and processing logic to the backend
-        return backend.read(engine=engine, obj_idx=obj_idx, track_name=track_name, signal_name=signal_name, start=start, stop=stop)
-
-#    def _resolve_track_index(self, track_name: Any) -> Optional[int]:
-#        for i, name in enumerate(self.track_names):
-#            if name == track_name:
-#                return i
-#            # allow tuple/list ranges to match by containment
-#            if isinstance(name, (list, tuple)) and track_name in name:
-#                return i
-#        return None
-
+    # ------------------------------------------------------------------
     def close(self) -> None:
-        if self.backend is not None:
-            self.backend.close()
-            self.backend = None
+        if self._backend is not None:
+            self._backend.close()
+            self._backend = None
+
+    def __enter__(self) -> "StorageEngine":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    # ------------------------------------------------------------------
+    def _infer_engine(self, obj_idx: int) -> Optional[str]:
+        """Return the unique engine registered for obj_idx, if any."""
+        engines = set()
+        for (eng, o_idx), _ in self._backend._schemas.items():
+            if int(o_idx) == int(obj_idx):
+                engines.add(eng)
+        if not engines:
+            return None
+        if len(engines) > 1:
+            raise BackendError(
+                f"obj_idx {obj_idx} registered under multiple engines "
+                f"{sorted(engines)}; pass engine= explicitly"
+            )
+        return engines.pop()
+
