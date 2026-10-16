@@ -137,6 +137,7 @@ class StorageEngine:
                 "collection": collection,
                 "engine": engine,
                 "obj_idx": int(obj.idx),
+                "objs_type": objs_type,
                 "name": str(obj.name),
                 "signal_type": signal_type,
                 "total_samples": int(total_samples),
