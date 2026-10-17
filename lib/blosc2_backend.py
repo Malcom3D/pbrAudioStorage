@@ -279,7 +279,7 @@ class Blosc2Backend(BackendBase):
         data_1d = np.ascontiguousarray(audio_data, dtype=np.float32).ravel()
 
         with self._lock:
-            arr: blosc2.NDArray = self._rstore[path]
+            arr: blosc2.NDArray = self._wstore[path]
             obj_meta = arr.attrs["object"]
             total_samples = int(obj_meta["metadata"]["total_samples"])
             signal_type = obj_meta["metadata"].get("signal_type", "float32")
