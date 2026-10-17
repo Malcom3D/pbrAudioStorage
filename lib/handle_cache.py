@@ -58,7 +58,7 @@ class HandleCache:
             store.close()
         wstore = blosc2.DictStore(localpath=path, mode=mode, cparams=cparams, dparams=dparams)
         rstore = blosc2.DictStore(localpath=path, mmap_mode='r', mode='r', cparams=cparams, dparams=dparams)
-        self._lru[path] = store
+        self._lru[path] = wstore
         return rstore, wstore
 
     # ------------------------------------------------------------------

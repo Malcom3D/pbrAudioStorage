@@ -189,8 +189,8 @@ class Blosc2Backend(BackendBase):
         with self._lock:
             path = self._node_path(engine, obj_idx)
 
-            if path in self._store:
-                #arr = self._store[path]
+            if path in self._wstore:
+                #arr = self._wstore[path]
                 # already materialized; leave alone
                 return
 
@@ -261,10 +261,10 @@ class Blosc2Backend(BackendBase):
             arr.attrs["schema"] = dict(schema_dict)
 
             # save it
-            self._store[path] = arr
+            self._wstore[path] = arr
             # blosc2.DictStore may or may not flush on __setitem__; call flush
             try:
-                self._store.flush()
+                self._wstore.flush()
             except Exception:
                 pass
 
@@ -273,7 +273,7 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     def write(self, engine: str, obj_idx: int, track_name: str, audio_data: np.ndarray, sample_start: int = 0, signal_name: Optional[str] = None, signal_metadata: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None) -> None:
         path = self._node_path(engine, obj_idx)
-        if path not in self._store:
+        if path not in self._wstore:
             raise BackendError(f"object node {path} not materialized")
 
         data_1d = np.ascontiguousarray(audio_data, dtype=np.float32).ravel()
@@ -362,9 +362,9 @@ class Blosc2Backend(BackendBase):
             t["child_names"] = [s["name"] for s in track_signals]
             arr.attrs["tracks"] = tracks_meta_list
 
-            self._store[path] = arr
+            self._wstore[path] = arr
             try:
-                self._store.flush()
+                self._wstore.flush()
             except Exception:
                 pass
 
@@ -821,7 +821,7 @@ class Blosc2Backend(BackendBase):
                         "applied": applied}
 
         try:
-            self._store.flush()
+            self._wstore.flush()
         except Exception:
             pass
         return {"status": "ok", "applied": applied}
@@ -862,33 +862,33 @@ class Blosc2Backend(BackendBase):
         # scene metadata is not persisted in blosc2 attrs directly;
         # we store it under the special key "<collection>/__scene__".
         key = f"{self.collection}/__scene__"
-        if key not in self._store:
-            self._store[key] = {
+        if key not in self._rstore:
+            self._wstore[key] = {
                 "data_type": DataTypeKind.MULTI_TRACK.value,
                 "default_behavior": DefaultBehavior.MULTI.value,
                 "chains": None,
             }
-        scene = self._store[key]
+        scene = self._rstore[key]
         if not isinstance(scene, dict):
             raise PatchError("scene entry is not a dict")
         self._set_dict_path(scene, rest, op, value)
-        self._store[key] = scene
+        self._wstore[key] = scene
 
     def _edit_engine(self, rest: List[str], op: str, value: Any) -> None:
         if not rest:
             raise PatchError("missing engine name")
         eng = rest[0]
         key = f"{self.collection}/__engine__/{eng}"
-        if key not in self._store:
-            self._store[key] = {
+        if key not in self._rstore:
+            self._wstore[key] = {
                 "name": eng,
                 "data_type": DataTypeKind.MULTI_TRACK.value,
                 "default_behavior": DefaultBehavior.MULTI.value,
                 "chains": None,
             }
-        ent = self._store[key]
+        ent = self._rstore[key]
         self._set_dict_path(ent, rest[1:], op, value)
-        self._store[key] = ent
+        self._wstore[key] = ent
 
     def _edit_object(self, rest: List[str], op: str, value: Any) -> None:
         if len(rest) < 2:
@@ -899,9 +899,9 @@ class Blosc2Backend(BackendBase):
         except ValueError:
             raise PatchError(f"obj_idx must be integer, got {rest[1]!r}")
         path = self._node_path(eng, obj_idx)
-        if path not in self._store:
+        if path not in self._rstore:
             raise PatchError(f"object {eng}/{obj_idx} not found")
-        arr = self._store[path]
+        arr = self._rstore[path]
         rest2 = rest[2:]
         if not rest2:
             raise PatchError("missing object-level field")
@@ -917,7 +917,7 @@ class Blosc2Backend(BackendBase):
         else:
             raise PatchError(f"unknown section {section!r}")
 
-        self._store[path] = arr
+        self._wstore[path] = arr
 
     def _edit_object_track(self, arr, rest: List[str], op: str, value: Any) -> None:
         if not rest:
