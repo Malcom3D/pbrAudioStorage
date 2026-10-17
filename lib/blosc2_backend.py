@@ -128,7 +128,7 @@ class Blosc2Backend(BackendBase):
         os.makedirs(os.path.dirname(self.urlpath) or ".", exist_ok=True)
 
         self._handle_cache = HandleCache(capacity=handle_capacity)
-        self._store, self._store = self._handle_cache.get(self.urlpath, mode=mode)
+        self._rstore, self._wstore, = self._handle_cache.get(self.urlpath, mode=mode)
 
         # We do NOT spawn any thread. The _lock attribute exists so callers
         # with an out-of-band reason to serialize can use it, but the default
@@ -195,7 +195,7 @@ class Blosc2Backend(BackendBase):
                 return
 
             shape = (1, n_signals, total_samples)
-            cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np_dtype).itemsize, nthreads=16)
+            cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
             dparams = blosc2.DParams(nthreads=8)
 
             arr = blosc2.zeros(
@@ -279,7 +279,7 @@ class Blosc2Backend(BackendBase):
         data_1d = np.ascontiguousarray(audio_data, dtype=np.float32).ravel()
 
         with self._lock:
-            arr: blosc2.NDArray = self._store[path]
+            arr: blosc2.NDArray = self._rstore[path]
             obj_meta = arr.attrs["object"]
             total_samples = int(obj_meta["metadata"]["total_samples"])
             signal_type = obj_meta["metadata"].get("signal_type", "float32")
@@ -289,10 +289,7 @@ class Blosc2Backend(BackendBase):
             signals_meta_list: List[List[Dict[str, Any]]] = list(arr.attrs["signals"])
 
             # ---- locate track ----
-            track_idx = next(
-                (ti for ti, t in enumerate(tracks_meta_list) if t["name"] == track_name),
-                None,
-            )
+            track_idx = next((ti for ti, t in enumerate(tracks_meta_list) if t["name"] == track_name), None)
             if track_idx is None:
                 raise BackendError(f"track {track_name!r} not found in {path}")
 
@@ -455,9 +452,9 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     def _read_ndarray(self, engine: str, obj_idx: int) -> Tuple[np.ndarray, blosc2.NDArray]:
         path = self._node_path(engine, obj_idx)
-        if path not in self._store:
+        if path not in self._rstore:
             raise BackendError(f"object node {path} not found")
-        arr = self._store[path]
+        arr = self._rstore[path]
         # force-load into a contiguous numpy array
         data = np.ascontiguousarray(arr[:])
         return data, arr
@@ -597,7 +594,7 @@ class Blosc2Backend(BackendBase):
         # We must know which obj_idx live under this engine.
         # Walk the store: keys are "<collection>/<engine>/<obj_idx>"
         prefix = f"{self.collection}/{engine}/"
-        for key in list(self._store.keys()):
+        for key in list(self._rstore.keys()):
             if not key.startswith(prefix):
                 continue
             tail = key[len(prefix):]
@@ -758,7 +755,7 @@ class Blosc2Backend(BackendBase):
         }
 
         prefix = f"{self.collection}/"
-        for key in list(self._store.keys()):
+        for key in list(self._rstore.keys()):
             if not key.startswith(prefix):
                 continue
             tail = key[len(prefix):]
@@ -771,7 +768,7 @@ class Blosc2Backend(BackendBase):
                 continue
             o_idx = int(o_str)
 
-            arr = self._store[key]
+            arr = self._rstore[key]
             tree["objects"][f"{eng}/{o_idx}"] = {
                 "object": arr.attrs.get.get("object"),
                 "tracks": arr.attrs.get("tracks"),
