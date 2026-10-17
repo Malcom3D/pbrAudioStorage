@@ -16,8 +16,6 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 import os
 import json
 import copy
@@ -124,17 +122,13 @@ class Blosc2Backend(BackendBase):
     """
 
     # ------------------------------------------------------------------
-    def __init__(self,
-                 urlpath: str,
-                 collection: str = None,
-                 mode: str = "a",
-                 handle_capacity: int = 8) -> None:
+    def __init__(self, urlpath: str, collection: str = None, mode: str = "a", handle_capacity: int = 8) -> None:
         self.urlpath = os.path.abspath(urlpath)
         self.collection = collection
         os.makedirs(os.path.dirname(self.urlpath) or ".", exist_ok=True)
 
         self._handle_cache = HandleCache(capacity=handle_capacity)
-        self._store = self._handle_cache.get(self.urlpath, mode=mode)
+        self._store, self._store = self._handle_cache.get(self.urlpath, mode=mode)
 
         # We do NOT spawn any thread. The _lock attribute exists so callers
         # with an out-of-band reason to serialize can use it, but the default
@@ -160,8 +154,7 @@ class Blosc2Backend(BackendBase):
     # Registration / materialize
     # ------------------------------------------------------------------
     def register_object(self, obj_idx: int, schema_dict: Dict[str, Any]) -> None:
-        schema = AudioSchema(**{k: v for k, v in schema_dict.items()
-                                if k in AudioSchema.__dataclass_fields__})
+        schema = AudioSchema(**{k: v for k, v in schema_dict.items() if k in AudioSchema.__dataclass_fields__})
         validate_schema(schema)
         self._schemas[(schema.engine, obj_idx)] = schema
 
@@ -197,20 +190,15 @@ class Blosc2Backend(BackendBase):
             path = self._node_path(engine, obj_idx)
 
             if path in self._store:
-                arr = self._store[path]
+                #arr = self._store[path]
                 # already materialized; leave alone
                 return
 
             shape = (1, n_signals, total_samples)
-            cparams = blosc2.CParams(
-                codec=blosc2.Codec.LZ4,
-                clevel=1,
-                typesize=np.dtype(np_dtype).itemsize,
-                nthreads=16,
-            )
+            cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np_dtype).itemsize, nthreads=16)
             dparams = blosc2.DParams(nthreads=8)
 
-            arr = blosc2.empty(
+            arr = blosc2.zeros(
                 shape,
                 dtype=np_dtype,
                 chunks=(1, 1, min(total_samples, 1 << 16)),
@@ -218,8 +206,7 @@ class Blosc2Backend(BackendBase):
                 cparams=cparams,
                 dparams=dparams,
                 urlpath=None,   # in-memory NDArray; DictStore serializes
-                contiguous=False,
-                fill_value=0.0,
+                contiguous=False
             )
 
             # ---- attrs: object node ----
@@ -284,15 +271,7 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
-    def write(self,
-              engine: str,
-              obj_idx: int,
-              track_name: str,
-              audio_data: np.ndarray,
-              sample_start: int = 0,
-              signal_name: Optional[str] = None,
-              signal_metadata: Optional[Dict[str, Any]] = None,
-              metadata: Optional[Dict[str, Any]] = None) -> None:
+    def write(self, engine: str, obj_idx: int, track_name: str, audio_data: np.ndarray, sample_start: int = 0, signal_name: Optional[str] = None, signal_metadata: Optional[Dict[str, Any]] = None, metadata: Optional[Dict[str, Any]] = None) -> None:
         path = self._node_path(engine, obj_idx)
         if path not in self._store:
             raise BackendError(f"object node {path} not materialized")
@@ -395,14 +374,7 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     # Read
     # ------------------------------------------------------------------
-    def read(self,
-             engine: str,
-             obj_idx: Optional[int] = None,
-             track_name: Optional[str] = None,
-             signal_name: Optional[str] = None,
-             unprocessed: bool = False,
-             side_channels: Optional[Dict[str, np.ndarray]] = None
-             ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def read(self, engine: str, obj_idx: Optional[int] = None, track_name: Optional[str] = None, signal_name: Optional[str] = None, unprocessed: bool = False, side_channels: Optional[Dict[str, np.ndarray]] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Read audio data + attrs tree.
 
@@ -464,15 +436,7 @@ class Blosc2Backend(BackendBase):
         )
 
     # ------------------------------------------------------------------
-    def _read_scope(self, scope: str,
-                    attrs_tree: Dict[str, Any],
-                    engine: Optional[str] = None,
-                    obj_idx: Optional[int] = None,
-                    track_name: Optional[str] = None,
-                    signal_name: Optional[str] = None,
-                    unprocessed: bool = False,
-                    side_channels: Optional[Dict[str, np.ndarray]] = None
-                    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def _read_scope(self, scope: str, attrs_tree: Dict[str, Any], engine: Optional[str] = None, obj_idx: Optional[int] = None, track_name: Optional[str] = None, signal_name: Optional[str] = None, unprocessed: bool = False, side_channels: Optional[Dict[str, np.ndarray]] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Dispatch correctly to the right reader for the scope."""
         if scope == "scene":
             return self._read_scene(attrs_tree, unprocessed, side_channels)
@@ -481,11 +445,9 @@ class Blosc2Backend(BackendBase):
         if scope == "object":
             return self._read_object(engine, obj_idx, attrs_tree, unprocessed, side_channels)
         if scope == "track":
-            return self._read_track(engine, obj_idx, track_name, attrs_tree,
-                                    unprocessed, side_channels)
+            return self._read_track(engine, obj_idx, track_name, attrs_tree, unprocessed, side_channels)
         if scope == "signal":
-            return self._read_signal(engine, obj_idx, track_name, signal_name,
-                                     attrs_tree, unprocessed, side_channels)
+            return self._read_signal(engine, obj_idx, track_name, signal_name, attrs_tree, unprocessed, side_channels)
         raise BackendError(f"unknown scope {scope!r}")
 
     # ------------------------------------------------------------------
@@ -503,14 +465,12 @@ class Blosc2Backend(BackendBase):
     # ------------------------------------------------------------------
     # Signal scope: (1, S, N) -> (n_tracks... index track, index signal)
     # ------------------------------------------------------------------
-    def _read_signal(self, engine, obj_idx, track_name, signal_name,
-                     attrs_tree, unprocessed, side_channels):
+    def _read_signal(self, engine, obj_idx, track_name, signal_name, attrs_tree, unprocessed, side_channels):
         data, arr = self._read_ndarray(engine, obj_idx)
         tracks_meta = list(arr.attrs["tracks"])
         signals_meta = list(arr.attrs["signals"])
 
-        track_idx = next((ti for ti, t in enumerate(tracks_meta)
-                          if t["name"] == track_name), None)
+        track_idx = next((ti for ti, t in enumerate(tracks_meta) if t["name"] == track_name), None)
         if track_idx is None:
             raise BackendError(f"track {track_name!r} not found")
         sig_meta_track = signals_meta[track_idx]
@@ -646,8 +606,7 @@ class Blosc2Backend(BackendBase):
             if not tail.lstrip("-").isdigit():
                 continue
             o_idx = int(tail)
-            arr_o, attrs_o = self._read_object(engine, o_idx, attrs_tree,
-                                               unprocessed=True, side_channels=None)
+            arr_o, attrs_o = self._read_object(engine, o_idx, attrs_tree, unprocessed=True, side_channels=None)
             if arr_o is not None:
                 arrays.append(arr_o)
             attrs_objects.append(attrs_o)

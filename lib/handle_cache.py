@@ -16,8 +16,6 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 import os
 import blosc2
 from collections import OrderedDict
@@ -52,9 +50,13 @@ class HandleCache:
             except Exception:
                 pass
 
+        cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np_dtype).itemsize, nthreads=16)
+        dparams = blosc2.DParams(nthreads=8)
         if not os.path.exists(path):
-            mode='w'
-        store = blosc2.DictStore(localpath=path, mode=mode)
+            store = blosc2.DictStore(localpath=path, mode='w', cparams=cparams, dparams=dparams)
+            store.close()
+#        store = blosc2.DictStore(localpath=path, mode=mode, cparams=cparams, dparams=dparams)
+        store = blosc2.DictStore(localpath=path, mmap_mode='r', mode='r', cparams=cparams, dparams=dparams)
         self._lru[path] = store
         return store
 
