@@ -18,6 +18,7 @@
 
 import os
 import blosc2
+import numpy as np
 from collections import OrderedDict
 from typing import Dict, Optional
 
@@ -50,15 +51,15 @@ class HandleCache:
             except Exception:
                 pass
 
-        cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np_dtype).itemsize, nthreads=16)
+        cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
         dparams = blosc2.DParams(nthreads=8)
         if not os.path.exists(path):
             store = blosc2.DictStore(localpath=path, mode='w', cparams=cparams, dparams=dparams)
             store.close()
-#        store = blosc2.DictStore(localpath=path, mode=mode, cparams=cparams, dparams=dparams)
-        store = blosc2.DictStore(localpath=path, mmap_mode='r', mode='r', cparams=cparams, dparams=dparams)
+        wstore = blosc2.DictStore(localpath=path, mode=mode, cparams=cparams, dparams=dparams)
+        rstore = blosc2.DictStore(localpath=path, mmap_mode='r', mode='r', cparams=cparams, dparams=dparams)
         self._lru[path] = store
-        return store
+        return rstore, wstore
 
     # ------------------------------------------------------------------
     def clear(self) -> None:
