@@ -110,7 +110,7 @@ class Blosc2Backend(BackendBase):
 
     Layout on disk (inside the store's blosc2.DictStore):
       store["<collection>/<engine>/<obj_idx>"] -> blosc2.NDArray
-        shape      = (1, n_signals, total_samples)
+        shape      = (n_tracks, n_signals, total_samples)
         dtype      = float32 | float64
         attrs:
           "object"  -> AudioDataType dict (obj-level)
@@ -184,7 +184,7 @@ class Blosc2Backend(BackendBase):
         # n_signals starts at n_tracks (one signal per track, unnamed).
         # The signal name is stored in the AudioDataType so a "renamed"
         # signal is just metadata.
-        n_signals = n_tracks
+        n_signals = 1
 
         with self._lock:
             path = self._node_path(engine, obj_idx)
@@ -194,7 +194,7 @@ class Blosc2Backend(BackendBase):
                 # already materialized; leave alone
                 return
 
-            shape = (1, n_signals, total_samples)
+            shape = (n_tracks, n_signals, total_samples)
             cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
             dparams = blosc2.DParams(nthreads=8)
 
