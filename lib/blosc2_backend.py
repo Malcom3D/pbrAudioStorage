@@ -345,7 +345,20 @@ class Blosc2Backend(BackendBase):
                     subtype=str((metadata or {}).get("subtype", "FLOAT")),
                     metadata={"total_samples": total_samples, **(signal_metadata or {})},
                 )
-            else:
+            elif len(track_signals) == 0: # target_signal_idx is 0 write on the unassigned arr.shape[1]
+                new_name = signal_name if signal_name is not None else f"{track_name}_{target_signal_idx}"
+                sig_meta = AudioDataType(
+                    name=new_name,
+                    id=target_signal_idx,
+                    data_type=DataTypeKind.MONO.value,
+                    default_behavior=DefaultBehavior.SINGLE.value,
+                    channels=1,
+                    sample_rate=int((metadata or {}).get("sample_rate", 48000)),
+                    bit_depth=int((metadata or {}).get("bit_depth", 32)),
+                    subtype=str((metadata or {}).get("subtype", "FLOAT")),
+                    metadata={"total_samples": total_samples, **(signal_metadata or {})},
+                )
+            elif len(track_signals) > 0:
                 sig_meta = AudioDataType.from_dict(track_signals[target_signal_idx])
                 if signal_metadata:
                     sig_meta.metadata.update(signal_metadata)
@@ -368,7 +381,7 @@ class Blosc2Backend(BackendBase):
                 arr[0, target_signal_idx, :] = cur
 
             # ---- persist signal / track meta ----
-            if new_signal:
+            if new_signal or len(track_signals) == 0:
                 track_signals.append(sig_meta.to_dict())
             else:
                 track_signals[target_signal_idx] = sig_meta.to_dict()
