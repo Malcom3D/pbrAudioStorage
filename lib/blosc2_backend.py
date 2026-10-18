@@ -245,8 +245,8 @@ class Blosc2Backend(BackendBase):
 
             # ---- attrs: signal nodes, initialized one per track ----
             signals: List[List[Dict[str, Any]]] = []
-            if len(signal_names) > 0:
-                for _ in enumerate(track_names):
+            for _ in enumerate(track_names):
+                if len(signal_names) > 0:
                     for si, sname in enumerate(signal_names):
                         sig = AudioDataType(
                             name=sname,
@@ -257,18 +257,8 @@ class Blosc2Backend(BackendBase):
                             metadata={"total_samples": total_samples},
                         )
                         signals.append([sig.to_dict()])
-                    arr.attrs["signals"] = signals
-            elif len(signal_names) == 0:
-                for _ in enumerate(track_names):
-                    sig = AudioDataType(
-                        name=None,   # default signal name == track name
-                        id=0,
-                        data_type=DataTypeKind.MONO.value,
-                        default_behavior=DefaultBehavior.SINGLE.value,
-                        channels=1,
-                        metadata={"total_samples": total_samples},
-                    )
-                    signals.append([sig.to_dict()])
+                else:
+                    signals.append([])
                 arr.attrs["signals"] = signals
 
             # ---- attrs: schema, engine, collection ----
@@ -358,7 +348,7 @@ class Blosc2Backend(BackendBase):
             else:
                 sig_meta = AudioDataType.from_dict(track_signals[target_signal_idx])
                 if signal_metadata:
-                    sig_meta.m.metadata.update(signal_metadata)
+                    sig_meta.metadata.update(signal_metadata)
 
             # ---- padded chunk (buffer sized to the *current* total_samples) ----
             buf = np.zeros(total_samples, dtype=np_dtype)
