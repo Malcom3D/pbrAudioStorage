@@ -47,6 +47,7 @@ class AudioSchema:
     track_group: str = "default"
     track_names: List[str] = field(default_factory=list)
     signal_type: str = "float32"            # "float32" | "float64"
+    signal_names: List[str] = field(default_factory=list)
     total_samples: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     # per-track behaviour overrides (falls back to per-kind defaults)
@@ -66,6 +67,7 @@ class AudioSchema:
             "track_group": self.track_group,
             "track_names": list(self.track_names),
             "signal_type": self.signal_type,
+            "signal_names": list(self.signal_names),
             "total_samples": int(self.total_samples),
             "metadata": dict(self.metadata),
             "track_behaviors": dict(self.track_behaviors),

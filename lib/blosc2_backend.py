@@ -168,6 +168,7 @@ class Blosc2Backend(BackendBase):
         obj_idx = int(schema_dict["obj_idx"])
         name = schema_dict["name"]
         signal_type = schema_dict.get("signal_type", "float32")
+        signal_names = schema_dict.get("signal_names", [])
         total_samples = int(schema_dict["total_samples"])
         track_names: List[str] = list(schema_dict["track_names"])
         collection = schema_dict.get("collection", self.collection)
@@ -184,7 +185,7 @@ class Blosc2Backend(BackendBase):
         # n_signals starts at n_tracks (one signal per track, unnamed).
         # The signal name is stored in the AudioDataType so a "renamed"
         # signal is just metadata.
-        n_signals = 1
+        n_signals = len(signal_names) if len(signal_names) > 0 else 1
 
         with self._lock:
             path = self._node_path(engine, obj_idx)
@@ -228,6 +229,7 @@ class Blosc2Backend(BackendBase):
 
             # ---- attrs: track nodes ----
             tracks = []
+            child_indices = np.arange(len(signal_names)).tolist()
             for ti, tname in enumerate(track_names):
                 t = AudioDataType(
                     name=tname,
@@ -235,25 +237,39 @@ class Blosc2Backend(BackendBase):
                     data_type=DataTypeKind.CUSTOM.value,
                     default_behavior=DefaultBehavior.MERGE.value,
                     channels=1,
-                    child_indices=[ti],
-                    child_names=[tname],
+                    child_indices=child_indices,
+                    child_names=signal_names,
                 )
                 tracks.append(t)
             arr.attrs["tracks"] = [t.to_dict() for t in tracks]
 
             # ---- attrs: signal nodes, initialized one per track ----
             signals: List[List[Dict[str, Any]]] = []
-            for ti, tname in enumerate(track_names):
-                sig = AudioDataType(
-                    name=tname,   # default signal name == track name
-                    id=0,
-                    data_type=DataTypeKind.MONO.value,
-                    default_behavior=DefaultBehavior.SINGLE.value,
-                    channels=1,
-                    metadata={"total_samples": total_samples},
-                )
-                signals.append([sig.to_dict()])
-            arr.attrs["signals"] = signals
+            if len(signal_names) > 0:
+                for _ in enumerate(track_names):
+                    for si, sname in enumerate(signal_names):
+                        sig = AudioDataType(
+                            name=sname,
+                            id=si,
+                            data_type=DataTypeKind.MONO.value,
+                            default_behavior=DefaultBehavior.SINGLE.value,
+                            channels=1,
+                            metadata={"total_samples": total_samples},
+                        )
+                        signals.append([sig.to_dict()])
+                    arr.attrs["signals"] = signals
+            elif len(signal_names) == 0:
+                for _ in enumerate(track_names):
+                    sig = AudioDataType(
+                        name=None,   # default signal name == track name
+                        id=0,
+                        data_type=DataTypeKind.MONO.value,
+                        default_behavior=DefaultBehavior.SINGLE.value,
+                        channels=1,
+                        metadata={"total_samples": total_samples},
+                    )
+                    signals.append([sig.to_dict()])
+                arr.attrs["signals"] = signals
 
             # ---- attrs: schema, engine, collection ----
             arr.attrs["engine"] = engine
@@ -293,24 +309,39 @@ class Blosc2Backend(BackendBase):
             if track_idx is None:
                 raise BackendError(f"track {track_name!r} not found in {path}")
 
-            track_signals = signals_meta_list[track_idx]
+            track_signals = list(signals_meta_list[track_idx])
 
             # ---- resolve target signal idx ----
-            if signal_name is None:
-                target_signal_idx = len(track_signals)
-                new_signal = True
-            else:
-                target_signal_idx = next(
-                    (si for si, s in enumerate(track_signals) if s["name"] == signal_name),
-                    None,
-                )
-                if target_signal_idx is None:
-                    target_signal_idx = len(track_signals)
-                    new_signal = True
-                else:
-                    new_signal = False
+            # Always initialize new_signal explicitly.
+            new_signal = False
+            target_signal_idx = None
 
-            # ---- signal metadata ----
+            if len(track_signals) == 0:
+                # Write to the first (default) signal of this track.
+                target_signal_idx = 0
+            elif len(track_signals) > 0:
+                if signal_name is None:
+                    # Write to a new signal of this track.
+                    new_signal = True
+                    target_signal_idx = len(track_signals)
+                if signal_name is not None:
+                    # Explicit signal name: match it or create new
+                    for si, s in enumerate(track_signals):
+                        if s["name"] == signal_name:
+                            target_signal_idx = si
+                            break
+                    if target_signal_idx is None:
+                        # No signal slot exists -> create one
+                        new_signal = True
+                        target_signal_idx = len(track_signals)
+
+            # ---- grow the NDArray if a new signal needs to be added ----
+            if new_signal:
+                # Resize along axis=1 (the signal axis).
+                new_shape = (arr.shape[0], arr.shape[1] + 1, arr.shape[2])
+                arr.resize(new_shape)
+
+            # ---- build the signal metadata ----
             if new_signal:
                 new_name = signal_name if signal_name is not None else f"{track_name}_{target_signal_idx}"
                 sig_meta = AudioDataType(
@@ -327,13 +358,9 @@ class Blosc2Backend(BackendBase):
             else:
                 sig_meta = AudioDataType.from_dict(track_signals[target_signal_idx])
                 if signal_metadata:
-                    sig_meta.metadata.update(signal_metadata)
+                    sig_meta.m.metadata.update(signal_metadata)
 
-            # ---- if new signal, rebuild NDArray with one extra slot ----
-            if new_signal:
-                arr.resize((arr.shape[0], arr.shape[1] + 1, arr.shape[2]))
-
-            # ---- padded chunk ----
+            # ---- padded chunk (buffer sized to the *current* total_samples) ----
             buf = np.zeros(total_samples, dtype=np_dtype)
             n = min(len(data_1d), max(0, total_samples - sample_start))
             if n > 0:
@@ -342,10 +369,11 @@ class Blosc2Backend(BackendBase):
             # ---- write to slot ----
             # NOTE: for chunked writes without a new signal, honour overwrite
             # of just the chunk range.
-            if new_signal or sample_start == 0 and n == total_samples:
+            is_full_write = (sample_start == 0 and n == total_samples)
+            if new_signal or is_full_write:
                 arr[0, target_signal_idx, :] = buf
             else:
-                cur = arr[0, target_signal_idx, :]
+                cur = arr[0, target_signal_idx, :].copy()
                 cur[sample_start:sample_start + n] = data_1d[:n]
                 arr[0, target_signal_idx, :] = cur
 
