@@ -54,8 +54,7 @@ def _as_2d_f32(x: np.ndarray) -> np.ndarray:
     return a
 
 
-def _stack_signals(signals: List[np.ndarray],
-                   behavior: str) -> Optional[np.ndarray]:
+def _stack_signals(signals: List[np.ndarray], behavior: str) -> Optional[np.ndarray]:
     """
     Aggregate a list of 1-D or 2-D signal arrays according to *behavior*.
 
@@ -381,7 +380,9 @@ class Blosc2Backend(BackendBase):
                 arr[0, target_signal_idx, :] = cur
 
             # ---- persist signal / track meta ----
-            if new_signal or len(track_signals) == 0:
+            if len(track_signals) == 0:
+                track_signals = [sig_meta.to_dict()]
+            elif new_signal:
                 track_signals.append(sig_meta.to_dict())
             else:
                 track_signals[target_signal_idx] = sig_meta.to_dict()
