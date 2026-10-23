@@ -16,11 +16,8 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
-
 
 @dataclass
 class DagNode:

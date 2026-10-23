@@ -16,8 +16,6 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
@@ -25,7 +23,6 @@ from typing import Any, Dict, List, Optional, Sequence
 from .dag_builder import DagBuilder
 from .dag_node import DagNode
 from ..utils.errors import DagError
-
 
 @dataclass
 class Props:
