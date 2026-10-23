@@ -16,12 +16,9 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Any, Dict, List, Optional
-
 
 class DataTypeKind(str, Enum):
     """High-level kind of the audio data node."""
@@ -31,13 +28,12 @@ class DataTypeKind(str, Enum):
     AMBISONIC = "ambisonic"
     CUSTOM = "custom"
 
-
 class DefaultBehavior(str, Enum):
     """
     Behavior for aggregating children into a parent.
 
     - NONE   : do not contribute to the parent node
-    - SINGLE : take the first child, drop the rest  (shape (1, N))
+    - SINGLE : there can only be one child (shape (1, N))
     - MERGE  : sum children element-wise (shape (1, N))
     - MULTI  : stack children along axis 0 (shape (C, N))
     """
@@ -45,7 +41,6 @@ class DefaultBehavior(str, Enum):
     SINGLE = "single"
     MERGE = "merge"
     MULTI = "multi"
-
 
 @dataclass
 class AudioDataType:
