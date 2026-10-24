@@ -343,7 +343,7 @@ class StorageEngine:
                 data = self.read(chain.props.custom['path'])
                 props.append(data)
             elif chain.props.custom and chain.props.custom['file']:    # read from filesystem
-                file = np.fromfile(chain.props.custom['file'], dtype=chain.props.custom['dtype']
+                file = np.fromfile(chain.props.custom['file'], dtype=chain.props.custom['dtype'])
                 props.append(file)
         return props
 
