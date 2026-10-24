@@ -24,13 +24,14 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 from ..lib.schema import AudioSchema
 from ..lib.audio_data_type import AudioDataType, DataTypeKind, DefaultBehavior
 from ..lib.blosc2_backend import Blosc2Backend
+from ..lib.zarr_backend import ZarrBackend
 
 from ..dag.dag_builder import DagBuilder
 from ..dag.dag_evaluator import DagEvaluator, Props
 
 from pbrAudioCommon import EntityManager
 
-_BACKENDS: Dict[str, Type[BackendBase]] = {
+_BACKENDS: Dict[str, Type[Any]] = {
     "blosc2": Blosc2Backend,
     "zarr": ZarrBackend,
 }
@@ -54,7 +55,7 @@ class StorageEngine:
     urlpath: Optional[str] = None
 
     # runtime
-    _backend: Optional[BackendBase] = field(default=None, init=False)
+    _backend: Optional[Any] = field(default=None, init=False)
 
     def __post_init__(self):
         config = self.entity_manager.get('config')
@@ -346,8 +347,6 @@ class StorageEngine:
                 file = np.fromfile(chain.props.custom['file'], dtype=chain.props.custom['dtype'])
                 props.append(file)
         return props
-
-    def read(self, collection: Optional[str], engine: Optional[str] = None, obj_idx: Optional[int] = None, track_name: Optional[str] = None, signal_name: Optional[str] = None, unprocessed: bool = False) -> np.ndarray:
 
     def _apply_chain(self, adt: AudioDataType, x: np.ndarray, props: Props) -> np.ndarray:
         """
