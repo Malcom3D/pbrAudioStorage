@@ -134,7 +134,7 @@ class StorageEngine:
         self._backend.register(schema=schema)
 
         # Materialize schema
-        objs = getattr(config, schema.objs_type, [])
+        objs = getattr(config, schema.objs_type)
         for obj in objs:
             self._backend.materialize(collection=collection, engine=engine, obj_idx=obj.idx, obj_name=obj.name)
 

@@ -47,7 +47,7 @@ class Blosc2Backend:
     _queue: deque = field(default_factory=deque)
 
     def __post_init__(self):
-        self.urlpath = os.path.abspath(urlpath)
+        self.urlpath = os.path.abspath(self.urlpath)
 
         existing = _BACKEND_REGISTRY.get(self.urlpath)
         if existing is not None:
@@ -72,7 +72,7 @@ class Blosc2Backend:
                     backend._wstore.close()
             finally:
                 pass
-        _BACKEND_REGISTISTRY.clear()
+        _BACKEND_REGISTRY.clear()
 
     def open(self, path: str = None, cparams: blosc2.CParams = None, dparams: blosc2.DParams = None, mode: str = 'a') -> (blosc2.TreeStore, blosc2.TreeStore):
         cparams = cparams or blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
@@ -90,7 +90,7 @@ class Blosc2Backend:
 
     def register(self, schema: AudioSchema) -> None:
         # save the AudioSchema to the blosc2.TreeStore attrs schemas metadata
-        self._wstore.attrs['metadata'].append(schema)
+        self._wstore.attrs['metadata'] += [schema.to_dict()]
 
     def materialize(self, collection: str, engine: str, obj_idx: int, obj_name: str) -> None:
         schema = self.get_schema(collection, engine)
@@ -351,7 +351,6 @@ class Blosc2Backend:
 
     def get_schema(self, collection: str, engine: str) -> AudioSchema:
         _rstore = self.open(self.urlpath, mode='r')
-        for idx in range(len(self._wstore.attrs['metadata'])):
-            schema = _rstore.attrs['metadata'][idx]
+        for schema in _rstore.attrs['metadata']:
             if schema.collection == collection and schema.engine == engine:
                 return schema
