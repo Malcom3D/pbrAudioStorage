@@ -198,6 +198,7 @@ class StorageEngine:
                     signal_datas = self._traverse_child(child_paths, child_meta, unprocessed)
                 else:
                     audio_data = self._backend.read(collection=_collection, engine=_engine, obj_idx=_obj_idx, track_name=_track_name, signal_idx=_signal_idx)
+                    props = self._get_props(audio_meta[path])
                     signal_datas[path] = self._apply_chain(audio_meta[path], audio_data, props) if not unprocessed else audio_data
             elif len(path_parts) == 4:
                 track_paths.append(path)
@@ -236,6 +237,7 @@ class StorageEngine:
             path_parts = path.strip('/').split('/')
             _collection, _engine, _obj_idx, _track_name, _signal_idx = path_parts
             audio_data = self._backend.read(collection=_collection, engine=_engine, obj_idx=_obj_idx, track_name=_track_name, signal_idx=_signal_idx)
+            props = self._get_props(audio_meta[path])
             datas[path] = self._apply_chain(audio_meta[path], audio_data, props) if not unprocessed else audio_data
 
             father_path = [f"{_collection}/{_engine}/{_obj_idx}/{_track_name}"]
@@ -248,6 +250,7 @@ class StorageEngine:
         datas = {}
         for path in paths:
             data = self._apply_behavior(path, audio_datas, audio_meta)
+            props = self._get_props(audio_meta[path])
             datas[path] = self._apply_chain(audio_meta[path], data, props) if not unprocessed else data
         datas = self._apply_kinds(datas, audio_meta)
         return datas
@@ -326,6 +329,25 @@ class StorageEngine:
             )
         builder.compile(roots=[prev])
         return builder
+
+    def _get_props(self, audio_meta: AudioDataType) -> List[Any]:
+        props = []
+        chains = audio_meta.chains
+        for chain in chains:
+            if chain.props.custom and chain.props.custom['entity']:    # read from EntityManager/KleptoEntityStore
+                entities = self.entity_manager.get(chain.props.custom['entity'])
+                for entity in entities:
+                    if (entity.idx and entity.idx == chain.props.custom['entity_idx']) or (entity.obj_idx and entity.obj_idx == chain.props.custom['entity_idx']):
+                        props.append(entity)
+            elif chain.props.custom and chain.props.custom['path']:    # read from pbrAudioStorage
+                data = self.read(chain.props.custom['path'])
+                props.append(data)
+            elif chain.props.custom and chain.props.custom['file']:    # read from filesystem
+                file = np.fromfile(chain.props.custom['file'], dtype=chain.props.custom['dtype']
+                props.append(file)
+        return props
+
+    def read(self, collection: Optional[str], engine: Optional[str] = None, obj_idx: Optional[int] = None, track_name: Optional[str] = None, signal_name: Optional[str] = None, unprocessed: bool = False) -> np.ndarray:
 
     def _apply_chain(self, adt: AudioDataType, x: np.ndarray, props: Props) -> np.ndarray:
         """
