@@ -278,7 +278,7 @@ class Blosc2Backend:
                 metadata=metadata,
                 child_names=[],
                 child_indices=[]
-            )).to_dict()
+            ).to_dict())
 
         # check audio_data length
         audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
@@ -302,7 +302,7 @@ class Blosc2Backend:
 
         track_path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
         track_arr = _rstore[track_path]
-        return track_arr[signal_idx][:]
+        return track_arr[signal_idx]
 
     def get_child(self, paths: List[str] = ['/']) -> List[str]:
         _rstore = self.open(self.urlpath, mode='r')
