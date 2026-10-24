@@ -265,9 +265,11 @@ class Blosc2Backend:
             if len(signals_meta) > 0:
                 new_shape = (track_arr.shape[0] + 1, track_arr.shape[1])
                 track_arr.resize(new_shape)
+                track_meta['child_indices'] += signal_idx
+                track_meta['child_names'] += signal_name if signal_name is not None else signal_idx
 
             # write signal's metadata to storage
-            track_arr.attrs['signals'].append(AudioDataType(
+            signal_meta.append(AudioDataType(
                 name=signal_name if signal_name is not None else signal_idx,
                 id=signal_idx,
                 data_type=schema['default_kinds']['signal'],
@@ -307,7 +309,7 @@ class Blosc2Backend:
     def get_child(self, paths: List[str] = ['/']) -> List[str]:
         _rstore = self.open(self.urlpath, mode='r')
         for path in paths:
-            childs = _rstore.get_children(path)
+            childs = _rstore.get_descendants(path)
             valid_childs = []
             for child in childs:
                 if len(child.strip('/').split('/')) >= 4:
