@@ -178,7 +178,7 @@ class StorageEngine:
             paths = self._backend.get_child([path])
 
         child_meta, audio_meta = ({} for _ in range(2))
-        child_done, track_paths, object_paths, engine_paths, collection_paths = ([] for _in range(5))
+        child_done, track_paths, object_paths, engine_paths, collection_paths = ([] for _ in range(5))
         for path in paths:
             audio_meta[path] = self._backend.get_meta(path=path)
             path_parts = path.strip('/').split('/')
