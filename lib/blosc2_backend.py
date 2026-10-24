@@ -90,7 +90,12 @@ class Blosc2Backend:
 
     def register(self, schema: AudioSchema) -> None:
         # save the AudioSchema to the blosc2.TreeStore attrs schemas metadata
-        self._wstore.attrs['metadata'] += [schema.to_dict()]
+        schema_dict = schema.to_dict()
+        schema_registry = self._wstore.attrs['metadata']
+        for _schema in schema_registry:
+            if _schema == schema_dict:
+                return
+        self._wstore.attrs['metadata'] += [schema_dict]
 
     def materialize(self, collection: str, engine: str, obj_idx: int, obj_name: str) -> None:
         schema = self.get_schema(collection, engine)
