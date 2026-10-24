@@ -30,6 +30,7 @@ from .core.storage_engine import StorageEngine
 from .lib.audio_data_type import AudioDataType, DataTypeKind, DefaultBehavior
 from .lib.schema import AudioSchema
 from .lib.blosc2_backend import Blosc2Backend
+from .lib.zarr_backend import ZarrBackend
 from .dag.dag_node import DagNode
 from .dag.dag_builder import DagBuilder
 from .dag.dag_evaluator import DagEvaluator
@@ -43,6 +44,7 @@ __all__ = [
     "validate_schema",
     "StorageEngine",
     "Blosc2Backend",
+    "ZarrBackend",
     "DagNodeNode",
     "DagBuilder",
     "DagEvaluator",

@@ -97,7 +97,7 @@ class DagEvaluator:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _as_2d(x: np.ndarray) -> np.ndarrayarray:
+    def _as_2d(x: np.ndarray) -> np.ndarray:
         if x is None:
             return None
         a = np.ascontiguousarray(x, dtype=np.float32)

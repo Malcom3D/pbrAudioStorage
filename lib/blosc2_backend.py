@@ -74,7 +74,7 @@ class Blosc2Backend:
                 pass
         _BACKEND_REGISTISTRY.clear()
 
-    def open(self, path: str = None, cparams: blosc2.CParams = None, dparams: blosc2.DParams = None, mode: str) -> (blosc2.TreeStore, blosc2.TreeStore):
+    def open(self, path: str = None, cparams: blosc2.CParams = None, dparams: blosc2.DParams = None, mode: str = 'a') -> (blosc2.TreeStore, blosc2.TreeStore):
         cparams = cparams or blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
         dparams = dparams or blosc2.DParams(nthreads=8)
         path = os.path.abspath(path) or self.urlpath
@@ -175,7 +175,7 @@ class Blosc2Backend:
         _rstore = self.open(self.urlpath, mode='r')
         collection_id = len(_rstore.get_children(f"/")) - 1
         try:
-            check = _rstore[f"/collection}"].attrs['metadata']
+            check = _rstore[f"/{collection}"].attrs['metadata']
             check.add_child(idx=engine_id, name=engine)
         except:
             # write the engine's metadata
@@ -271,9 +271,9 @@ class Blosc2Backend:
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
                 metadata=signal_metadata,
-                child_names=[]
+                child_names=[],
                 child_indices=[]
-            )
+            ))
 
         # check audio_data length
         audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
