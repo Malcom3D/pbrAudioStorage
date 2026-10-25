@@ -69,6 +69,17 @@ class AudioSchema:
             "default_kinds": dict(self.default_kinds),
         }
 
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "AudioSchema":
+        known = {
+            "collection", "engine", "objs_type", "track_group",
+            "track_names", "signal_type", "signal_names", "total_samples",
+            "sample_rate", "bit_depth", "subtype",
+            "metadata", "default_behaviors", "default_kinds"
+        }
+        clean = {k: v for k, v in d.items() if k in known}
+        return cls(**clean)
+
     def validate(self) -> None:
         if not self.collection:
             raise SchemaError("schema.collection must be a non-empty string")
