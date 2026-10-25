@@ -66,7 +66,7 @@ class StorageEngine:
         subframes = config.system.subframes
         sample_rate = config.system.sample_rate
         sfps = ( fps / fps_base ) * subframes # subframes per seconds
-        self.total_samples = config.system.total_frames * sample_rate / sfps
+        self.total_samples = int(config.system.total_frames * sample_rate / sfps)
 
         # resolve url
         if self.urlpath is None:
@@ -171,7 +171,7 @@ class StorageEngine:
         elif collection is None and engine is None and obj_idx is None and track_name is None and signal_name is None:
             return self._traverse_scene(unprocessed)
 
-    def _process_audio(audio_data: np.ndarray, audio_meta: AudioDataType, unprocessed: bool):
+    def _process_audio(self, audio_data: np.ndarray, audio_meta: AudioDataType, unprocessed: bool):
         audio_data = self._apply_behavior(audio_data, audio_meta) if audio_data is not None else None
         if audio_data is not None:
             props = self._get_props(audio_meta)
@@ -180,7 +180,7 @@ class StorageEngine:
         return audio_data
 
     def _traverse_signal(self, collection: str, engine: str, obj_idx: int, track_name: str, signal_name: str, unprocessed: bool) -> np.ndarray:
-        signal_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", signal_name)
+        signal_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", signal_name=signal_name)
         signal_idx = signal_meta.id
         audio_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=signal_idx)
 
@@ -265,10 +265,10 @@ class StorageEngine:
 
     def _apply_kinds(self, audio_data: np.ndarray, audio_meta: AudioDataType):
         if audio_meta.data_type == DataTypeKind.MONO.value:
-           if audio_data.shape[0] == self.total_samples or audio_data.shape[0] == 1 and audio_data.ndim > 1:
-               return audio_data.reshape(1,-1) if audio_datas.shape[0] == self.total_samples else audio_data
+           if audio_data.shape[0] == self.total_samples or (audio_data.shape[0] == 1 and audio_data.ndim) > 1:
+               return audio_data.reshape(1,-1) if audio_data.shape[0] == self.total_samples else audio_data
            else:
-               return np.sum(audio_data, axis=0).reshape(1,-1) if audio_datas.shape[0] == self.total_samples else audio_data # fallback to merge behavior
+               return np.sum(audio_data, axis=0).reshape(1,-1) if audio_data.shape[0] == self.total_samples else audio_data # fallback to merge behavior
         elif audio_meta.data_type == DataTypeKind.MULTI.value:
            return audio_data
         elif audio_meta.data_type == DataTypeKind.CUSTOM.value:
@@ -388,6 +388,8 @@ class StorageEngine:
     def _get_props(self, audio_meta: AudioDataType) -> List[Any]:
         props = []
         chains = audio_meta.chains
+        if chains is None:
+            return []
         for chain in chains:
             if chain.props.custom and 'entity' in chain.props.custom.keys():    # read from EntityManager/KleptoEntityStore
                 entities = self.entity_manager.get(chain.props.custom['entity'])
