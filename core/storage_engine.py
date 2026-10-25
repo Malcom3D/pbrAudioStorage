@@ -158,6 +158,7 @@ class StorageEngine:
         Traverse the tree and use the DAG to evaluate the AudioDataType to process the raw float32 arrays from the signals.
         If ``unprocessed`` is True, returns raw float32 arrays evaluating the only the AudioDataType.default_behavior, without the signal processing chains.
         """
+
         if collection is None:
             # read the full graph, collections will be stacked on multitrack
             paths = self._backend.get_child()
@@ -183,10 +184,10 @@ class StorageEngine:
         for path in paths:
             audio_meta[path] = self._backend.get_meta(path=path)
             path_parts = path.strip('/').split('/')
-            if len(path_parts) == 5:
-                _collection, _engine, _obj_idx, _track_name, _signal_name = path_parts
+            if len(path_parts) == 4:
+                _collection, _engine, _obj_idx, _track_name = path_parts
                 track_meta = self._backend.get_meta(path=f"/{_collection}/{_engine}/{_obj_idx}/{_track_name}")
-                signal_idx = track_meta.child_names.index(_signal_name)
+                signal_idx = track_meta.child_names.index(signal_name)
                 # check for signal childs
                 signal_childs = audio_meta[path].child_indices
                 if len(signal_childs) > 0:

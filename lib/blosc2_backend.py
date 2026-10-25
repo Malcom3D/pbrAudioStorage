@@ -225,59 +225,59 @@ class Blosc2Backend:
         path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
         self._wpaths.append(path)
         track_arr = self._wstore[path]
-        track_meta: AudioDataType = track_arr.attrs['track']
+        track_meta: AudioDataType.from_dict(track_arr.attrs['track'])
         signals_meta: List[AudioDataType] = list(track_arr.attrs['signals'])
 #        track_meta = track_arr.attrs['track']
 #        signals_meta = track_arr.attrs['signals']
 
-        new_signal = False
+        new_meta = False 
         signal_idx = None
 
         if signal_name is not None:
-            # Search signal_name in track_meta child
+            # search signal_name in track_meta.child_names
             if signal_name in track_meta.child_names:
                 signal_idx = track_meta.child_names.index(signal_name)
-                if not track_arr.shape[0] > signal_idx:
-                    new_shape = (signal_idx + 1, track_arr.shape[1])
-                    track_arr.resize(new_shape)
+
+        if signal_name is not None and signal_idx is None:
+            # search signal_name or signals_meta
+            for signal_meta in signals_meta:
+                if signal_name in signal_meta.name:
+                    signal_idx = signal_meta.id if signal_idx is None else signal_idx
+                    break
+                # Search signal_name in signal_meta child
+                elif signal_name in signal_meta.child_names:
+                    child_idx = signal_meta.child_names.index(signal_name)
+                    signal_idx = signal_meta.child_indices[child_idx]
+                    break
 
         if signal_idx is None:
-            for signal_meta in signals_meta:
-                # Search signal_name in signals_meta
-                if signal_name is not None and signal_name in signal_meta.name:
-                    signal_idx = signal_meta.id
-                    break
-                # Search signal_name in signals_meta child
-                elif signal_name is not None and signal_name in signal_meta.child_names:
-                    signal_idx = signal_meta.child_names.index(signal_name)
-                    if not track_arr.shape[0] > signal_idx:
-                        new_shape = (signal_idx + 1, track_arr.shape[1])
-                        track_arr.resize(new_shape)
-                # Check schema default behaviors for signal (override single signal?)
-                elif len(signals_meta) == 1 and schema['default_behaviors']['signal'] == 'single':
-                    signal_idx = 0
-                    signal_meta.name = signal_name if signal_name is not None else signal_idx
-                else :
-                    new_signal = True
-                    signal_idx = len(signals_meta)
+            # Check schema default behaviors for signal (override single signal?)
+            if len(signals_meta) == 1 and schema['default_behaviors']['signal'] == 'single':
+                signal_idx = 0
 
-        if new_signal:
-            if len(signals_meta) > 0:
-                new_shape = (track_arr.shape[0] + 1, track_arr.shape[1])
-                track_arr.resize(new_shape)
-                track_meta['child_indices'] += signal_idx
-                track_meta['child_names'] += signal_name if signal_name is not None else signal_idx
+        new_meta = True if signal_idx is None else False
+        signal_idx = len(track_meta) if new_meta else signal_idx
+        signal_name = signal_name if signal_name is not None else signal_idx
 
-            # write signal's metadata to storage
-            signal_meta.append(AudioDataType(
-                name=signal_name if signal_name is not None else signal_idx,
+        # resize for new signal
+        if not track_arr.shape[0] > signal_idx:
+            new_shape = (signal_idx + 1, track_arr.shape[1])
+            track_arr.resize(new_shape)
+
+        if new_meta:
+            # add signal info to track_meta
+            track_meta.add_child(signal_idx, signal_name)
+
+            # write signal's metadata to signals_meta
+            signals_meta.append(AudioDataType(
+                name=signal_name,
                 id=signal_idx,
                 data_type=schema['default_kinds']['signal'],
                 default_behavior=schema['default_behaviors']['signal'],
                 sample_rate=schema['sample_rate'],
                 bit_depth=schema['bit_depth'],
                 subtype=schema['subtype'],
-                metadata=metadata,
+                metadata=metadata or {},
                 child_names=[],
                 child_indices=[]
             ).to_dict())
@@ -293,6 +293,9 @@ class Blosc2Backend:
             audio_data = data_pad
         # write signal's audio_data to storage
         track_arr[signal_idx] = audio_data
+
+        # rewrite track_arr to storage
+        self._wstore[path] = track_arr
 
         self._wpaths.remove(path)
 
@@ -316,20 +319,21 @@ class Blosc2Backend:
                     track_path = "/" + "/".join(child.strip('/').split('/')[0:4])
                     track_arr = _rstore[track_path]
                     audio_data_type = track_arr.attrs['track']
-                    if len(child.strip('/').split('/')) > 4:
-                        signal_name = child.strip('/').split('/')[4:][0]
-                        signal_idx = audio_data_type.child_names.index(signal_name)
-                        if signal_idx is None:
-                            if str(signal_name).isdigit():
-                                signal_idx = int(signal_name)
-                        if signal_idx is not None:
-                            audio_data_type = track_arr.attrs['signals'][signal_idx]
+
+#                    if len(child.strip('/').split('/')) > 3:
+#                        signal_name = child.strip('/').split('/')[4:][0]
+#                        signal_idx = audio_data_type.child_names.index(signal_name)
+#                        if signal_idx is None:
+#                            if str(signal_name).isdigit():
+#                                signal_idx = int(signal_name)
+#                        if signal_idx is not None:
+#                            audio_data_type = track_arr.attrs['signals'][signal_idx]
                 else:
                     audio_data_type = _rstore[child].attrs['metadata']
                 if not audio_data_type['default_behavior'] == "none":
                     valid_childs.append(child)
-                if len(valid_childs) > 0:
-                    valid_childs += self.get_child(valid_childs)
+#                if len(valid_childs) > 0:
+#                    valid_childs += self.get_child(valid_childs)
         return valid_childs
 
     def list(self, path: str = '/') -> List[str]:
