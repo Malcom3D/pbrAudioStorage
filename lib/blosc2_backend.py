@@ -99,26 +99,26 @@ class Blosc2Backend:
 
     def materialize(self, collection: str, engine: str, obj_idx: int, obj_name: str) -> None:
         schema = self.get_schema(collection, engine)
-        signal_names = schema['signal_names'] or []
-        total_samples = int(schema['total_samples'])
+        signal_names = schema.signal_names or []
+        total_samples = int(schema.total_samples)
 
-        np_dtype = np.float32 if schema['signal_type'] == "float32" else np.float64
+        np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
         n_signals = len(signal_names) if len(signal_names) > 0 else 1
 
         # create object's tracks array
-        for t_idx, track_name in enumerate(schema['track_names']):
+        for t_idx, track_name in enumerate(schema.track_names):
             track_arr = blosc2.zeros((n_signals,total_samples), dtype=np_dtype)
 
             # write track's storage metadata
             track_arr.attrs['track'] = AudioDataType(
                 name=track_name,
                 id=t_idx,
-                data_type=schema['default_kinds']['track'],
-                default_behavior=schema['default_behaviors']['track'],
-                sample_rate=schema['sample_rate'],
-                bit_depth=schema['bit_depth'],
-                subtype=schema['subtype'],
-                metadata=schema['metadata'],
+                data_type=schema.default_kinds['track'],
+                default_behavior=schema.default_behaviors['track'],
+                sample_rate=schema.sample_rate,
+                bit_depth=schema.bit_depth,
+                subtype=schema.subtype,
+                metadata=schema.metadata,
                 child_names=signal_names or [],
                 child_indices=np.arange(len(signal_names)).tolist() if signal_names is not None else []
             ).to_dict()
@@ -129,12 +129,12 @@ class Blosc2Backend:
                 track_arr.attrs['signals'].append(AudioDataType(
                     name=signal_names[s_idx] if len(signal_names) > 0 else s_idx,
                     id=s_idx,
-                    data_type=schema['default_kinds']['signal'],
-                    default_behavior=schema['default_behaviors']['signal'],
-                    sample_rate=schema['sample_rate'],
-                    bit_depth=schema['bit_depth'],
-                    subtype=schema['subtype'],
-                    metadata=schema['metadata'],
+                    data_type=schema.default_kinds['signal'],
+                    default_behavior=schema.default_behaviors['signal'],
+                    sample_rate=schema.sample_rate,
+                    bit_depth=schema.bit_depth,
+                    subtype=schema.subtype,
+                    metadata=schema.metadata,
                     child_names=[],
                     child_indices=[]
                 ).to_dict())
@@ -146,12 +146,12 @@ class Blosc2Backend:
         self._wstore[f"/{collection}/{engine}/{obj_idx}"].attrs['metadata'] = AudioDataType(
             name=obj_name,
             id=obj_idx,
-            data_type=schema['default_kinds']['object'],
-            default_behavior=schema['default_behaviors']['object'],
-            sample_rate=schema['sample_rate'],
-            bit_depth=schema['bit_depth'],
-            subtype=schema['subtype'],
-            metadata=schema['metadata'],
+            data_type=schema.default_kinds['object'],
+            default_behavior=schema.default_behaviors['object'],
+            sample_rate=schema.sample_rate,
+            bit_depth=schema.bit_depth,
+            subtype=schema.subtype,
+            metadata=schema.metadata,
             child_names=[],
             child_indices=[]
         ).to_dict()
@@ -166,14 +166,14 @@ class Blosc2Backend:
             self._wstore[f"/{collection}/{engine}"].attrs['metadata'] = AudioDataType(
                 name=engine,
                 id=engine_id,
-                data_type=schema['default_kinds']['engine'],
-                default_behavior=schema['default_behaviors']['engine'],
-                sample_rate=schema['sample_rate'],
-                bit_depth=schema['bit_depth'],
-                subtype=schema['subtype'],
-                metadata=schema['metadata'],
-                child_names=schema['track_names'],
-                child_indices=np.arange(len(schema['track_names'])).tolist()
+                data_type=schema.default_kinds['engine'],
+                default_behavior=schema.default_behaviors['engine'],
+                sample_rate=schema.sample_rate,
+                bit_depth=schema.bit_depth,
+                subtype=schema.subtype,
+                metadata=schema.metadata,
+                child_names=schema.track_names,
+                child_indices=np.arange(len(schema.track_names)).tolist()
             ).to_dict()
 
         # check for collection's metadata
@@ -187,12 +187,12 @@ class Blosc2Backend:
             self._wstore[f"/{collection}"].attrs['metadata'] = AudioDataType(
                 name=collection,
                 id=collection_id,
-                data_type=schema['default_kinds']['collection'],
-                default_behavior=schema['default_behaviors']['collection'],
-                sample_rate=schema['sample_rate'],
-                bit_depth=schema['bit_depth'],
-                subtype=schema['subtype'],
-                metadata=schema['metadata'],
+                data_type=schema.default_kinds['collection'],
+                default_behavior=schema.default_behaviors['collection'],
+                sample_rate=schema.sample_rate,
+                bit_depth=schema.bit_depth,
+                subtype=schema.subtype,
+                metadata=schema.metadata,
                 child_names=[engine],
                 child_indices=[engine_id]
             ).to_dict()
@@ -241,6 +241,7 @@ class Blosc2Backend:
         if signal_name is not None and signal_idx is None:
             # search signal_name or signals_meta
             for signal_meta in signals_meta:
+                signal_meta = AudioDataType.from_dict(signal_meta)
                 if signal_name in signal_meta.name:
                     signal_idx = signal_meta.id if signal_idx is None else signal_idx
                     break
@@ -252,11 +253,11 @@ class Blosc2Backend:
 
         if signal_idx is None:
             # Check schema default behaviors for signal (override single signal?)
-            if len(signals_meta) == 1 and schema['default_behaviors']['signal'] == 'single':
+            if len(signals_meta) == 1 and schema.default_behaviors['signal'] == 'single':
                 signal_idx = 0
 
         new_meta = True if signal_idx is None else False
-        signal_idx = len(track_meta) if new_meta else signal_idx
+        signal_idx = len(signals_meta) if new_meta else signal_idx
         signal_name = signal_name if signal_name is not None else signal_idx
 
         # resize for new signal
@@ -266,17 +267,17 @@ class Blosc2Backend:
 
         if new_meta:
             # add signal info to track_meta
-            track_meta.add_child(signal_idx, signal_name)
+            track_arr.add_child(signal_idx, signal_name)
 
             # write signal's metadata to signals_meta
             signals_meta.append(AudioDataType(
                 name=signal_name,
                 id=signal_idx,
-                data_type=schema['default_kinds']['signal'],
-                default_behavior=schema['default_behaviors']['signal'],
-                sample_rate=schema['sample_rate'],
-                bit_depth=schema['bit_depth'],
-                subtype=schema['subtype'],
+                data_type=schema.default_kinds['signal'],
+                default_behavior=schema.default_behaviors['signal'],
+                sample_rate=schema.sample_rate,
+                bit_depth=schema.bit_depth,
+                subtype=schema.subtype,
                 metadata=metadata or {},
                 child_names=[],
                 child_indices=[]
@@ -284,11 +285,11 @@ class Blosc2Backend:
 
         # check audio_data length
         audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
-        np_dtype = np.float32 if schema['signal_type'] == "float32" else np.float64
+        np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
         if sample_stop is None:
-            sample_stop = schema['total_samples']
-        if not audio_data.shape[0] == schema['total_samples']:
-            data_pad = np.zeros((schema['total_samples'],), dtype=np_dtype)
+            sample_stop = schema.total_samples
+        if not audio_data.shape[0] == schema.total_samples:
+            data_pad = np.zeros((schema.total_samples,), dtype=np_dtype)
             data_pad[start_sample:stop_sample] = audio_data
             audio_data = data_pad
         # write signal's audio_data to storage
@@ -364,4 +365,4 @@ class Blosc2Backend:
         _rstore = self.open(self.urlpath, mode='r')
         for schema in _rstore.attrs['metadata']:
             if schema['collection'] == collection and schema['engine'] == engine:
-                return schema
+                return AudioSchema.from_dict(schema)
