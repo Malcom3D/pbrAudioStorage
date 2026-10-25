@@ -226,7 +226,7 @@ class Blosc2Backend:
         self._wpaths.append(path)
         track_arr = self._wstore[path]
         track_meta = AudioDataType.from_dict(track_arr.attrs['track'])
-        signals_meta = [(AudioDataType.from_dict(signal_meta) for signal_meta in track_arr.attrs['signals'])]
+        signals_meta = [AudioDataType.from_dict(signal_meta) for signal_meta in track_arr.attrs['signals']]
 #        signals_meta: List[AudioDataType] = list(track_arr.attrs['signals'])
 #        track_meta = track_arr.attrs['track']
 #        signals_meta = track_arr.attrs['signals']
@@ -257,8 +257,8 @@ class Blosc2Backend:
             if len(signals_meta) == 1 and schema.default_behaviors['signal'] == 'single':
                 signal_idx = 0
 
-        new_meta = True if signal_idx is None else False
-        signal_idx = len(signals_meta) if new_meta else signal_idx
+        new_meta = True if signal_idx is None or signal_idx == 0 else False
+        signal_idx = len(signals_meta) if signal_idx is None else signal_idx
         signal_name = signal_name if signal_name is not None else signal_idx
 
         # resize for new signal
@@ -269,6 +269,7 @@ class Blosc2Backend:
         if new_meta:
             # add signal info to track_meta
             track_meta.add_child(signal_idx, signal_name)
+            track_arr.attrs['track'] = track_meta.to_dict()
 
             # write signal's metadata to signals_meta
             signals_meta.append(AudioDataType(
@@ -283,6 +284,7 @@ class Blosc2Backend:
                 child_names=[],
                 child_indices=[]
             ).to_dict())
+            track_arr.attrs['signals'] = signals_meta
 
         # check audio_data length
         audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
@@ -356,8 +358,8 @@ class Blosc2Backend:
         if len(path_parts) == 4:
             track_arr = _rstore[path]
             if signal_name is not None or signal_idx is not None:
-                if signal_name in in track_arr.attrs['track'].child_names or signal_idx in in track_arr.attrs['track'].child_indices:
-                    signal_idx = track_arr.attrs['track'].child_indices[track_arr.attrs['track'].child_names.index(signal_name)] if signal_name is not None else signal_idx
+                if signal_name in track_arr.attrs['track']['child_names'] or signal_idx in track_arr.attrs['track']['child_indices']:
+                    signal_idx = track_arr.attrs['track']['child_indices'][track_arr.attrs['track']['child_names'].index(signal_name)] if signal_name is not None else signal_idx
                     return AudioDataType.from_dict(track_arr.attrs['signals'][signal_idx])
             else:
                 return AudioDataType.from_dict(track_arr.attrs['track'])
