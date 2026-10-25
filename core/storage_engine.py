@@ -158,6 +158,29 @@ class StorageEngine:
         Traverse the tree and use the DAG to evaluate the AudioDataType to process the raw float32 arrays from the signals.
         If ``unprocessed`` is True, returns raw float32 arrays evaluating the only the AudioDataType.default_behavior, without the signal processing chains.
         """
+        if collection and engine and obj_idx and track_name and signal_name:
+            schema = self._backend.get_schema()
+            signal_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", signal_name)
+            signal_idx = signal_meta.id
+            audio_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=signal_idx)
+            props = self._get_props(signal_meta)
+            audio_data = self._apply_chain(signal_meta, audio_data, props) if not unprocessed else audio_data
+            n_child = len(signal_meta.child_names)
+            if n_child > 0:
+                for child_idx in signal_meta.child_indices:
+                    child_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", child_idx)
+                    child_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=child_idx)
+                    child_data = self._apply_chain(child_meta, child_data, props) if not unprocessed else child_data
+                    audio_data = np.stack((audio_data, child_data), axis=0)
+
+############### WORK IN PROGRESS #####################################
+
+            audio_data = {main_path: self._apply_behavior(father_path, datas, audio_meta)}
+            audio_data = self._apply_kinds(audio_data, audio_meta)
+                
+            signal_datas[path] = self._apply_chain(audio_meta[path], audio_data, props) if not unprocessed else audio_data
+
+##################################################
 
         if collection is None:
             # read the full graph, collections will be stacked on multitrack
