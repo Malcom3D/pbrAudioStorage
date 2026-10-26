@@ -311,7 +311,7 @@ class Blosc2Backend:
 
         track_path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
         track_arr = _rstore[track_path]
-        return track_arr[signal_idx]
+        return track_arr[signal_idx].reshape(1,-1)
 
     def get_child(self, paths: List[str] = ['/']) -> List[str]:
         _rstore = self.open(self.urlpath, mode='r')
