@@ -190,6 +190,7 @@ class StorageEngine:
             for child_idx in signal_meta.child_indices:
                 child_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=child_idx)
                 audio_data = np.stack((audio_data, child_data), axis=0)
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, signal_meta, unprocessed)
 
     def _traverse_track(self, collection: str, engine: str, obj_idx: int, track_name: str, unprocessed: bool) -> np.ndarray:
@@ -202,6 +203,7 @@ class StorageEngine:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_signal(collection, engine, obj_idx, track_name, child_name, unprocessed)
                 audio_data = np.stack((audio_data, child_data), axis=0) if audio_data is not None else child_data
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, audio_meta, unprocessed)
 
     def _traverse_object(self, collection: str, engine: str, obj_idx: int, unprocessed: bool) -> np.ndarray:
@@ -214,6 +216,7 @@ class StorageEngine:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_track(collection, engine, obj_idx, child_name, unprocessed)
                 audio_data = np.stack((audio_data, child_data), axis=0) if audio_data is not None else child_data
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, audio_meta, unprocessed)
 
     def _traverse_engine(self, collection: str, engine: str, unprocessed: bool) -> np.ndarray:
@@ -226,6 +229,7 @@ class StorageEngine:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_object(collection, engine, child_name, unprocessed)
                 audio_data = np.stack((audio_data, child_data), axis=0) if audio_data is not None else child_data
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, audio_meta, unprocessed)
 
     def _traverse_collection(self, collection: str, unprocessed: bool) -> np.ndarray:
@@ -238,6 +242,7 @@ class StorageEngine:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_engine(collection, engine, child_name, unprocessed)
                 audio_data = np.stack((audio_data, child_data), axis=0) if audio_data is not None else child_data
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, audio_meta, unprocessed)
 
     def _traverse_scene(self, unprocessed: bool) -> np.ndarray:
@@ -250,23 +255,23 @@ class StorageEngine:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_collection(collection, engine, child_name, unprocessed)
                 audio_data = np.stack((audio_data, child_data), axis=0) if audio_data is not None else child_data
+                audio_data = audio_data.reshape(audio_data.shape[0], -1)
         return self._process_audio(audio_data, audio_meta, unprocessed)
 
     def _apply_behavior(self, audio_data: np.ndarray, audio_meta: AudioDataType):
-        datas = np.zeros((self.total_samples), dtype=np.float32)
         if audio_meta.default_behavior == DefaultBehavior.NONE.value:
             return
         elif audio_meta.default_behavior == DefaultBehavior.SINGLE.value:
-            return audio_data[0]
+            return audio_data[0].reshape(1,-1)
         elif audio_meta.default_behavior == DefaultBehavior.MERGE.value:
-            return np.sum(audio_data, axis=0)
+            return np.sum(audio_data, axis=0).reshape(1,-1)
         elif audio_meta.default_behavior == DefaultBehavior.MULTI.value:
             return audio_data
 
     def _apply_kinds(self, audio_data: np.ndarray, audio_meta: AudioDataType):
         if audio_meta.data_type == DataTypeKind.MONO.value:
-           if audio_data.shape[0] == self.total_samples or (audio_data.shape[0] == 1 and audio_data.ndim) > 1:
-               return audio_data.reshape(1,-1) if audio_data.shape[0] == self.total_samples else audio_data
+           if audio_data.shape[0] == 1:
+               return audio_data
            else:
                return np.sum(audio_data, axis=0).reshape(1,-1) if audio_data.shape[0] == self.total_samples else audio_data # fallback to merge behavior
         elif audio_meta.data_type == DataTypeKind.MULTI.value:
@@ -283,7 +288,7 @@ class StorageEngine:
            # ambisonic encoder stub - fallback to MULTI
            # encoder = audio_meta.metadata['kind_encoder']
            return audio_data
-        return datas
+        return audio_data
 
 #    def _traverse_child(self, paths: List[str], audio_meta: Dict[str, Dict[str, Any]], unprocessed: bool = False):
 #        # read signals -> chain the signal -> apply behavior -> apply kind
