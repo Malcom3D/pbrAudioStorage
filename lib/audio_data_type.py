@@ -102,8 +102,10 @@ class AudioDataType:
 
     # ------------------------------------------------------------------
     def add_child(self, idx: int, name: str) -> None:
-        self.child_indices.append(int(idx))
-        self.child_names.append(str(name))
+        if not int(idx) in self.child_indices:
+            self.child_indices.append(int(idx))
+        if not str(name) in self.child_names:
+            self.child_names.append(str(name))
 
     def has_chain(self) -> bool:
         return bool(self.chains)

@@ -152,8 +152,8 @@ class Blosc2Backend:
             bit_depth=schema.bit_depth,
             subtype=schema.subtype,
             metadata=schema.metadata,
-            child_names=[],
-            child_indices=[]
+            child_names=schema.track_names,
+            child_indices=np.arange(len(schema.track_names)).tolist()
         ).to_dict()
 
         # check for engine's metadata
@@ -161,6 +161,7 @@ class Blosc2Backend:
         engine_id = len(_rstore.get_children(f"/{collection}")) - 1
         try:
             check = _rstore[f"/{collection}/{engine}"].attrs['metadata']
+            check.add_child(obj_idx, obj_name)
         except:
             # write the engine's metadata
             self._wstore[f"/{collection}/{engine}"].attrs['metadata'] = AudioDataType(
@@ -172,8 +173,8 @@ class Blosc2Backend:
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
                 metadata=schema.metadata,
-                child_names=schema.track_names,
-                child_indices=np.arange(len(schema.track_names)).tolist()
+                child_names=[obj_name],
+                child_indices=[0]
             ).to_dict()
 
         # check for collection's metadata
