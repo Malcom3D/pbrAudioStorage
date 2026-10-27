@@ -60,8 +60,8 @@ class Blosc2Backend:
         self._wstore = self.open(self.urlpath, mode='a')
         _BACKEND_REGISTRY[self.urlpath] = self
 
-    def __del__(self):
-        Blosc2Backend.close_all()
+#    def __del__(self):
+#        Blosc2Backend.close_all()
 
     @classmethod
     def close_all(cls):
