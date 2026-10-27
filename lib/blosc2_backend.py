@@ -42,7 +42,6 @@ class Blosc2Backend:
     """
     urlpath: str
     _wstore: Optional[blosc2.TreeStore] = field(default=None, init=False, repr=False)
-    _rstore: Optional[blosc2.TreeStore] = field(default=None, init=False, repr=False)
     _wpaths: List[str] = field(default_factory=list)
     _queue: deque = field(default_factory=deque)
 
@@ -157,10 +156,9 @@ class Blosc2Backend:
         ).to_dict()
 
         # check for engine's metadata
-        _rstore = self.open(self.urlpath, mode='r')
-        engine_id = len(_rstore.get_children(f"/{collection}")) - 1
+        engine_id = len(self._wstore.get_children(f"/{collection}")) - 1
         try:
-            check = _rstore[f"/{collection}/{engine}"].attrs['metadata']
+            check = self._wstore[f"/{collection}/{engine}"].attrs['metadata']
             check.add_child(obj_idx, obj_name)
         except:
             # write the engine's metadata
@@ -178,10 +176,9 @@ class Blosc2Backend:
             ).to_dict()
 
         # check for collection's metadata
-        _rstore = self.open(self.urlpath, mode='r')
-        collection_id = len(_rstore.get_children(f"/")) - 1
+        collection_id = len(self._wstore.get_children(f"/")) - 1
         try:
-            check = _rstore[f"/{collection}"].attrs['metadata']
+            check = self._wstore[f"/{collection}"].attrs['metadata']
             check.add_child(idx=engine_id, name=engine)
         except:
             # write the engine's metadata
@@ -308,21 +305,18 @@ class Blosc2Backend:
         """
         Read a signal
         """
-        _rstore = self.open(self.urlpath, mode='r')
-
         track_path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
-        track_arr = _rstore[track_path]
+        track_arr = self._wstore[track_path]
         return track_arr[signal_idx].reshape(1,-1)
 
     def get_child(self, paths: List[str] = ['/']) -> List[str]:
-        _rstore = self.open(self.urlpath, mode='r')
         for path in paths:
-            childs = _rstore.get_descendants(path)
+            childs = self._wstore.get_descendants(path)
             valid_childs = []
             for child in childs:
                 if len(child.strip('/').split('/')) >= 4:
                     track_path = "/" + "/".join(child.strip('/').split('/')[0:4])
-                    track_arr = _rstore[track_path]
+                    track_arr = self._wstore[track_path]
                     audio_data_type = track_arr.attrs['track']
 
 #                    if len(child.strip('/').split('/')) > 3:
@@ -334,7 +328,7 @@ class Blosc2Backend:
 #                        if signal_idx is not None:
 #                            audio_data_type = track_arr.attrs['signals'][signal_idx]
                 else:
-                    audio_data_type = _rstore[child].attrs['metadata']
+                    audio_data_type = self._wstore[child].attrs['metadata']
                 if not audio_data_type['default_behavior'] == "none":
                     valid_childs.append(child)
 #                if len(valid_childs) > 0:
@@ -342,32 +336,29 @@ class Blosc2Backend:
         return valid_childs
 
     def list(self, path: str = '/') -> List[str]:
-        _rstore = self.open(self.urlpath, mode='r')
         path_parts = path.strip('/').split('/')
         if len(path_parts) >= 4:
             track_path = "/" + "/".join(path_parts[0:4]) if path_parts else "/"
-            track_arr = _rstore[track_path]
+            track_arr = self._wstore[track_path]
             if len(path_parts) == 4:
                 return track_arr.attrs['track'].child_names
             elif len(path_parts) > 4 and path_parts[5] in track_arr.attrs['track'].child_names:
                 return track_arr.attrs['signals'][path_parts[5]].child_names
-        return _rstore.get_children(path)
+        return self._wstore.get_children(path)
 
     def get_meta(self, path: str = '/', signal_name: str = None, signal_idx: int = None) -> AudioDataType:
-        _rstore = self.open(self.urlpath, mode='r')
         path_parts = path.strip('/').split('/')
         if len(path_parts) == 4:
-            track_arr = _rstore[path]
+            track_arr = self._wstore[path]
             if signal_name is not None or signal_idx is not None:
                 if signal_name in track_arr.attrs['track']['child_names'] or signal_idx in track_arr.attrs['track']['child_indices']:
                     signal_idx = track_arr.attrs['track']['child_indices'][track_arr.attrs['track']['child_names'].index(signal_name)] if signal_name is not None else signal_idx
                     return AudioDataType.from_dict(track_arr.attrs['signals'][signal_idx])
             else:
                 return AudioDataType.from_dict(track_arr.attrs['track'])
-        return AudioDataType.from_dict(_rstore[path].attrs['metadata'])
+        return AudioDataType.from_dict(self._wstore[path].attrs['metadata'])
 
     def get_schema(self, collection: str, engine: str) -> AudioSchema:
-        _rstore = self.open(self.urlpath, mode='r')
-        for schema in _rstore.attrs['metadata']:
+        for schema in self._wstore.attrs['metadata']:
             if schema['collection'] == collection and schema['engine'] == engine:
                 return AudioSchema.from_dict(schema)
