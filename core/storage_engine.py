@@ -414,26 +414,112 @@ class StorageEngine:
         builder.compile(roots=[prev])
         return builder
 
-    def _get_props(self, audio_meta: AudioDataType) -> List[Any]:
-        props = []
+    def _get_props(self, audio_meta: AudioDataType) -> Props:
+        """
+        Build a single `Props` object for `DagEvaluator` from `audio_meta.chains`.
+
+        Each chain step's `props.custom` describes *what* to inject into
+        `props.custom`, and *where* to to read it from. Multiple chains are merged
+        into a single `Props` (key collisions are last-writer-wins, but we
+        namespace by entity name so that clashes only happen if the caller
+        intends it).
+
+        Supported `custom` payload entries (per chain step):
+          - {"entity": "<em_entity>", "entity_idx": <int-like>}:
+                pull from EntityManager, only matching the given idx/obj_idx.
+          - {"path": "<storage path>"}:
+                recursively read from this same StorageEngine.
+          - {"datafile": "<path>", "dtype": "<numpy dtype str>"}:
+                load a raw binary file with np.fromfile.
+          - {"file": "<path>"}:
+                pass the path string through untouched (host reads it).
+        """
+        props = Props()
         chains = audio_meta.chains
-        if chains is None:
-            return []
-        for chain in chains:
-            if chain.props.custom and 'entity' in chain.props.custom.keys():    # read from EntityManager/KleptoEntityStore
-                entities = self.entity_manager.get(chain.props.custom['entity'])
-                for entity in entities:
-                    if (entity.idx and entity.idx == chain.props.custom['entity_idx']) or (entity.obj_idx and entity.obj_idx == chain.props.custom['entity_idx']):
-                        props.append(entity)
-            elif chain.props.custom and 'path' in chain.props.custom.keys():    # read from pbrAudioStorage
-                data = self.read(chain.props.custom['path'])
-                props.append(data)
-            elif chain.props.custom and 'datafile' in chain.props.custom.keys():    # read data from filesystem
-                datafile = np.fromfile(chain.props.custom['datafile'], dtype=chain.props.custom['dtype'])
-                props.append(datafile)
-            elif chain.props.custom and 'file' in chain.props.custom.keys():    # the pbrAudioSignals host must read a file from filesystem
-                props.append(chain.props.custom['file'])
+        if not chains:
+            return props
+
+        # audio_meta.chains is a dict like
+        #   {"op": "sequential", "processors": [...], "props": {"custom": {...}}}
+        # so we take its "props" sub sub-dict (may be absent).
+        custom = ((chains.get("props") or {}).get("custom")) or {}
+
+        if not custom:
+            # Legacy / alternative layout: scan each processor's own props.custom
+            for step in chains.get("processors", []) or []:
+                step_custom = (step.get("props") or {}).get("custom") or {}
+                self._inject_custom(props, step_custom)
+            return props
+
+        self._inject_custom(props, custom)
         return props
+
+    def _inject_custom(self, props: Props, custom: Dict[str, Any]) -> None:
+        """
+        Resolve a single `custom` dict and merge its values into `props.custom`.
+        """
+        if not custom:
+            return
+
+        # --- EntiyManager-backed sidechain (e.g. forces) -----------------
+        if "entity" in custom:
+            entity_name = custom["entity"]
+            entity_idx  = custom.get("entity_idx", None)
+            entities    = self.entity_manager.get(entity_name) or {}
+
+            # `entities` is typically a dict {idx: obj}; pick the one whose
+            # `.idx` or `.obj_idx` matches, mirroring the original code.
+            resolved = None
+            for _, entity in entities.items() if isinstance(entities, dict) else []:
+                ent_idx = getattr(entity, "idx", None)
+                ent_obj = getattr(entity, "obj_idx", None)
+                if (ent_idx is not None and ent_idx == entity_idx) or \
+                   (ent_obj is not None and ent_obj == entity_idx):
+                    resolved = entity
+                    break
+
+            if resolved is not None:
+                # Two aliases so downstream processors can pick either convention.
+                props.custom[entity_name] = resolved           # e.g. custom["forces"]
+                props.custom["force"] = resolved               # e.g. custom["force"]
+            return
+
+        # --- Recursive StorageEngine read ---------------------------------
+        if "path" in custom:
+            props.custom["data"] = self.read(custom["path"])
+            return
+
+        # --- Raw binary file ----------------------------------------------
+        if "datafile" in custom:
+            dtype = custom.get("dtype", "float32")
+            props.custom["data"] = np.fromfile(custom["datafile"], dtype=dtype)
+            return
+
+        # --- Host-managed file path ---------------------------------------
+        if "file" in custom:
+            props.custom["file"] = custom["file"]
+            return
+
+#    def _get_props(self, audio_meta: AudioDataType) -> List[Any]:
+#        props = []
+#        chains = audio_meta.chains
+#        if chains is None:
+#            return []
+#        for chain in chains:
+#            if chain.props.custom and 'entity' in chain.props.custom.keys():    # read from EntityManager/KleptoEntityStore
+#                entities = self.entity_manager.get(chain.props.custom['entity'])
+#                for entity in entities:
+#                    if (entity.idx and entity.idx == chain.props.custom['entity_idx']) or (entity.obj_idx and entity.obj_idx == chain.props.custom['entity_idx']):
+#                        props.append(entity)
+#            elif chain.props.custom and 'path' in chain.props.custom.keys():    # read from pbrAudioStorage
+#                data = self.read(chain.props.custom['path'])
+#                props.append(data)
+#            elif chain.props.custom and 'datafile' in chain.props.custom.keys():    # read data from filesystem
+#                datafile = np.fromfile(chain.props.custom['datafile'], dtype=chain.props.custom['dtype'])
+#                props.append(datafile)
+#            elif chain.props.custom and 'file' in chain.props.custom.keys():    # the pbrAudioSignals host must read a file from filesystem
+#                props.append(chain.props.custom['file'])
+#        return props
 
     def _apply_chain(self, x: np.ndarray, adt: AudioDataType, props: Props) -> np.ndarray:
         """
