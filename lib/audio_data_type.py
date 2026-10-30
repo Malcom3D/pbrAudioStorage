@@ -91,7 +91,7 @@ class AudioDataType:
     def from_dict(cls, d: Dict[str, Any]) -> "AudioDataType":
         known = {
             "name", "id", "data_type", "default_behavior",
-            "sample_rate", "bit_depth", "subtype", "channels",
+            "sample_rate", "bit_depth", "subtype", "channels", "track_group",
             "surround_type", "ambisonic_order", "layout",
             "child_indices", "child_names", "chains", "metadata",
         }

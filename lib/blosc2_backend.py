@@ -287,8 +287,8 @@ class Blosc2Backend:
                 metadata=metadata or {},
                 child_names=[],
                 child_indices=[]
-            ).to_dict())
-            track_arr.attrs['signals'] = signals_meta
+            ))
+            track_arr.attrs['signals'] = [sm.to_dict() for sm in signals_meta]
 
         # check audio_data length
         audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
