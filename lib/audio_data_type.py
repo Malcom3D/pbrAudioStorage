@@ -66,6 +66,7 @@ class AudioDataType:
     bit_depth: int = 32
     subtype: str = "FLOAT"
     channels: int = 1
+    track_group: str = "default" 
     surround_type: Optional[str] = None       # "5.1", "7.1", "22.2"
     ambisonic_order: Optional[int] = None     # 0, 1, 2, 3
     layout: Optional[List[List[float]]] = None  # [[az_deg, el_deg], ...]

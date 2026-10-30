@@ -117,6 +117,7 @@ class Blosc2Backend:
                 sample_rate=schema.sample_rate,
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
+                track_group=schema.track_group,
                 metadata=schema.metadata,
                 child_names=signal_names or [],
                 child_indices=np.arange(len(signal_names)).tolist() if signal_names is not None else []
@@ -133,6 +134,7 @@ class Blosc2Backend:
                     sample_rate=schema.sample_rate,
                     bit_depth=schema.bit_depth,
                     subtype=schema.subtype,
+                    track_group=schema.track_group,
                     metadata=schema.metadata,
                     child_names=[],
                     child_indices=[]
@@ -150,6 +152,7 @@ class Blosc2Backend:
             sample_rate=schema.sample_rate,
             bit_depth=schema.bit_depth,
             subtype=schema.subtype,
+            track_group=schema.track_group,
             metadata=schema.metadata,
             child_names=schema.track_names,
             child_indices=np.arange(len(schema.track_names)).tolist()
@@ -170,6 +173,7 @@ class Blosc2Backend:
                 sample_rate=schema.sample_rate,
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
+                track_group=schema.track_group,
                 metadata=schema.metadata,
                 child_names=[obj_name],
                 child_indices=[0]
@@ -190,6 +194,7 @@ class Blosc2Backend:
                 sample_rate=schema.sample_rate,
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
+                track_group=schema.track_group,
                 metadata=schema.metadata,
                 child_names=[engine],
                 child_indices=[engine_id]
@@ -278,6 +283,7 @@ class Blosc2Backend:
                 sample_rate=schema.sample_rate,
                 bit_depth=schema.bit_depth,
                 subtype=schema.subtype,
+                track_group=schema.track_group,
                 metadata=metadata or {},
                 child_names=[],
                 child_indices=[]
