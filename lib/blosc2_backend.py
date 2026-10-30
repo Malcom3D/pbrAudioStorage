@@ -368,3 +368,54 @@ class Blosc2Backend:
         for schema in self._wstore.attrs['metadata']:
             if schema['collection'] == collection and schema['engine'] == engine:
                 return AudioSchema.from_dict(schema)
+
+    def set_chains(self, collection: str, engine: str, obj_idx: int,
+                   track_name: str, chains: Optional[Dict[str, Any]],
+                   signal_names: Optional[List[str]] = None) -> int:
+        """
+        Attach or clear `chains` on a track's signals (or the track itself
+        if there are no signals).
+
+        Returns the number of AudioDataType nodes updated.
+        """
+        path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
+        if path not in self._wstore:
+            raise BackendError(f"Node {path} not materialized")
+
+        try:
+            track_arr = self._wstore[path]
+        except Exception as e:
+            raise BackendError(f"Cannot open {path}: {e}") from e
+
+        updated = 0
+
+        # Track-level metadata
+        track_meta = AudioDataType.from_dict(track_arr.attrs['track'])
+
+        # Signal-level metadata
+        signals_meta_raw = list(track_arr.attrs.get('signals', []))
+
+        if not signals_meta_raw:
+            # No signals: apply to the track node itself.
+            track_meta.chains = chains
+            track_arr.attrs['track'] = track_meta.to_dict()
+            self._wstore[path] = track_arr
+            return 1
+
+        # Signals: apply per-signal (or all)
+        allowed = set(signal_names) if signal_names is not None else None
+        for i, sig_raw in enumerate(signals_meta_raw):
+            sig_dt = AudioDataType.from_dict(sig_raw)
+            if allowed is None or sig_dt.name in allowed:
+                sig_dt.chains = chains
+                signals_meta_raw[i] = sig_dt.to_dict()
+                updated += 1
+
+        # Also mirror onto the track node for traversal-time discovery.
+        track_meta.chains = chains
+        track_arr.attrs['track'] = track_meta.to_dict()
+        track_arr.attrs['signals'] = signals_meta_raw
+
+        self._wstore[path] = track_arr
+        return updated
+

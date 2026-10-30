@@ -552,3 +552,82 @@ class StorageEngine:
         if out.ndim == 1:
             out = out.reshape(1, -1)
         return out.astype(np.float32, copy=False)
+
+    # ------------------------------------------------------------------
+    # Metadata-only helpers (used by postProcess and similar tools)
+    # ------------------------------------------------------------------
+    def _signal_node_exists(self, collection: str, engine: str,
+                            obj_idx: int, track_name: str) -> bool:
+        """Return True if the track node is materialized in the backend."""
+        path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
+        try:
+            self._backend.get_meta(path=path)
+            return True
+        except Exception:
+            return False
+
+    def get_track_meta(self, collection: str, engine: str, obj_idx: int, track_name: str) -> AudioDataType:
+        """
+        Read the AudioDataType stored on a *track* node.
+
+        Wraps the backend so callers never touch `_wstore` directly.
+        Raises `StorageError` if the node is missing.
+        """
+        path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
+        try:
+            return self._backend.get_meta(path=path)
+        except Exception as e:
+            raise StorageError(f"Cannot read track meta at {path}: {e}") from e
+
+    def get_signal_meta(self, collection: str, engine: str,
+                        obj_idx: int, track_name: str,
+                        signal_name: Optional[str] = None,
+                        signal_idx: Optional[int] = None) -> AudioDataType:
+        """
+        Read the AudioDataType stored on a *signal* node.
+        """
+        path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
+        try:
+            return self._backend.get_meta(path=path, signal_name=signal_name, signal_idx=signal_idx)
+        except Exception as e:
+            raise StorageError(f"Cannot read signal meta at {path} (signal_name={signal_name!r}, signal_idx={signal_idx!r}): {e}") from e
+
+    def list_signals(self, collection: str, engine: str, obj_idx: int, track_name: str) -> List[str]:
+        """
+        Return the child (signal) names of a track.
+        """
+        track_meta = self.get_track_meta(collection, engine, obj_idx, track_name)
+        return list(track_meta.child_names)
+
+    def set_chains(self, collection: str, engine: str, obj_idx: int, track_name: str, chains: Optional[Dict[str, Any]], signal_names: Optional[Sequence[str]] = None) -> int:
+        """
+        Write `chains` onto a track's (and optionally its signals')
+        AudioDataType metadata.
+
+        Parameters
+        ----------
+        chains : dict or None
+            The chain spec, or None to *clear* existing chains.
+        signal_names : sequence of str, optional
+            If provided, the chain is written only to those signals.
+            If None, the chain is written to every signal of the track.
+            If the track has no signals, the chain is written to the
+            track node itself.
+
+        Returns
+        -------
+        int
+            Number of nodes that were modified.
+        """
+        path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
+        if not self._signal_node_exists(collection, engine, obj_idx, track_name):
+            debug_print(f"set_chains: {path} not materialized - skipped")
+            return 0
+
+        # Backend-specific write; Blosc2Backend supports this natively.
+        return self._backend.set_chains(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, chains=chains, signal_names=signal_names)
+
+    def clear_chains(self, collection: str, engine: str,
+                     obj_idx: int, track_name: str) -> int:
+        """Convenience wrapper: remove all chains from a track's signals."""
+        return self.set_chains(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, chains=None)
