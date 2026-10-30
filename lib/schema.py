@@ -44,6 +44,7 @@ class AudioSchema:
     sample_rate: int = 44100
     bit_depth: int = 32
     subtype: str = "FLOAT"
+    chains: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     # default behaviour overrides (falls back to per-kind defaults)
     default_behaviors: Dict[str, DefaultBehavior] = field(default_factory=dict)
@@ -64,6 +65,7 @@ class AudioSchema:
             "sample_rate": int(self.sample_rate),
             "bit_depth": int(self.bit_depth),
             "subtype": self.subtype,
+            "chains": self.chains,
             "metadata": dict(self.metadata),
             "default_behaviors": dict(self.default_behaviors),
             "default_kinds": dict(self.default_kinds),
@@ -74,7 +76,7 @@ class AudioSchema:
         known = {
             "collection", "engine", "objs_type", "track_group",
             "track_names", "signal_type", "signal_names", "total_samples",
-            "sample_rate", "bit_depth", "subtype",
+            "sample_rate", "bit_depth", "subtype", "chains",
             "metadata", "default_behaviors", "default_kinds"
         }
         clean = {k: v for k, v in d.items() if k in known}
