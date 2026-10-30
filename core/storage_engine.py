@@ -130,7 +130,7 @@ class StorageEngine:
 
         # validate schema
         schema.validate()
-
+        schema.validate_chain()
         self._backend.register(schema=schema)
 
         # Materialize schema
@@ -403,7 +403,7 @@ class StorageEngine:
         prev = builder.add_source("__input__", None, metadata={"role": "input"})
 
         for step in adt.chains.get("processors", []):
-            cls = get_processor(step["type"])
+            cls = get_processor(step["type"], track_group=adt.track_group)
             proc = cls(**(step.get("params") or {}))
             prev = builder.add_processor(
                 name=step["type"],

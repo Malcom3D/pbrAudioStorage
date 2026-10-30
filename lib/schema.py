@@ -101,3 +101,33 @@ class AudioSchema:
         for beh in self.default_behaviors.values():
             if beh not in _VALID_BEHAVIORS:
                 raise SchemaError(f"invalid track behavior {beh!r}; valid: {sorted(_VALID_BEHAVIORS)}")
+
+    def validate_chain(self, chain_spec: Optional[list] = None) -> None:
+        """
+        Validate the processor chain in ``self.chains`` against
+        ``self.track_group``.
+
+        A chain entry whose processor does not ``supports_group(self.track_group)``
+        raises ``SchemaError``.
+        """
+        spec = chain_spec if chain_spec is not None else ((self.chains or {}).get("processors") or [])
+
+        if not spec:
+            return
+
+        try:
+            from pbrAudioSignals.core.processor import get_processor
+        except ImportError:
+            # pbrAudioSignals is a soft dep; skip silently if absent.
+            return
+
+        for step in spec:
+            t = step.get("type")
+            if not t:
+                raise SchemaError("chain step missing 'type'")
+            try:
+                get_processor(t, track_group=self.track_group)
+            except KeyError as e:
+                raise SchemaError(f"Unknown processor in chain: {t}") from e
+            except ValueError as e:
+                raise SchemaError(str(e)) from e
