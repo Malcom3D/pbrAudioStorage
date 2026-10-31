@@ -227,85 +227,90 @@ class Blosc2Backend:
         schema = self.get_schema(collection, engine)
         path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
         self._wpaths.append(path)
-        track_arr = self._wstore[path]
-        track_meta = AudioDataType.from_dict(track_arr.attrs['track'])
-        signals_meta = [AudioDataType.from_dict(signal_meta) for signal_meta in track_arr.attrs['signals']]
-#        signals_meta: List[AudioDataType] = list(track_arr.attrs['signals'])
-#        track_meta = track_arr.attrs['track']
-#        signals_meta = track_arr.attrs['signals']
 
-        new_meta = False 
-        signal_idx = None
+        try:
+            track_arr = self._wstore[path]
+            track_meta = AudioDataType.from_dict(track_arr.attrs['track'])
+            signals_meta = [AudioDataType.from_dict(signal_meta) for signal_meta in track_arr.attrs['signals']]
+#            signals_meta: List[AudioDataType] = list(track_arr.attrs['signals'])
+#            track_meta = track_arr.attrs['track']
+#            signals_meta = track_arr.attrs['signals']
 
-        if signal_name is not None:
-            # search signal_name in track_meta.child_names
-            if signal_name in track_meta.child_names:
+            signal_idx = None
+
+            if signal_name is not None and signal_name in track_meta.child_names:
+                # index signal_name in track_meta.child_names
                 signal_idx = track_meta.child_names.index(signal_name)
 
-        if signal_name is not None and signal_idx is None:
-            # search signal_name or signals_meta
-            for signal_meta in signals_meta:
-                signal_meta = AudioDataType.from_dict(signal_meta)
-                if signal_name in signal_meta.name:
-                    signal_idx = signal_meta.id if signal_idx is None else signal_idx
-                    break
-                # Search signal_name in signal_meta child
-                elif signal_name in signal_meta.child_names:
-                    child_idx = signal_meta.child_names.index(signal_name)
-                    signal_idx = signal_meta.child_indices[child_idx]
-                    break
+            if signal_name is not None and signal_idx is None:
+                # search signal_name or signals_meta
+                for signal_meta in signals_meta:
+#                    signal_meta = AudioDataType.from_dict(signal_meta)
+                    if signal_name in signal_meta.name:
+#                        signal_idx = signal_meta.id if signal_idx is None else signal_idx
+                        signal_idx = signal_meta.id
+                        break
+                    # Search signal_name in signal_meta child
+                    elif signal_name in signal_meta.child_names:
+                        child_idx = signal_meta.child_names.index(signal_name)
+                        signal_idx = signal_meta.child_indices[child_idx]
+                        break
 
-        if signal_idx is None:
-            # Check schema default behaviors for signal (override single signal?)
-            if len(signals_meta) == 1 and schema.default_behaviors['signal'] == 'single':
+            if signal_idx is None and len(signals_meta) == 1 and schema.default_behaviors['signal'] == 'single':
                 signal_idx = 0
 
-        new_meta = True if signal_idx is None or signal_idx == 0 else False
-        signal_idx = len(signals_meta) if signal_idx is None else signal_idx
-        signal_name = signal_name if signal_name is not None else signal_idx
+#            new_meta = True if signal_idx is None or signal_idx == 0 else False
+            new_meta = (signal_idx is None) or (signal_idx == 0 and len(signals_meta) <= 1)
+            signal_idx = len(signals_meta) if signal_idx is None else signal_idx
+            signal_name = signal_name if signal_name is not None else signal_idx
 
-        # resize for new signal
-        if not track_arr.shape[0] > signal_idx:
-            new_shape = (signal_idx + 1, track_arr.shape[1])
-            track_arr.resize(new_shape)
+            # resize for new signal
+            if not track_arr.shape[0] > signal_idx:
+                new_shape = (signal_idx + 1, track_arr.shape[1])
+                track_arr.resize(new_shape)
 
-        if new_meta:
-            # add signal info to track_meta
-            track_meta.add_child(signal_idx, signal_name)
-            track_arr.attrs['track'] = track_meta.to_dict()
+            if new_meta:
+                # add signal info to track_meta
+                track_meta.add_child(signal_idx, signal_name)
+                track_arr.attrs['track'] = track_meta.to_dict()
 
-            # write signal's metadata to signals_meta
-            signals_meta.append(AudioDataType(
-                name=signal_name,
-                id=signal_idx,
-                data_type=schema.default_kinds['signal'],
-                default_behavior=schema.default_behaviors['signal'],
-                sample_rate=schema.sample_rate,
-                bit_depth=schema.bit_depth,
-                subtype=schema.subtype,
-                track_group=schema.track_group,
-                metadata=metadata or {},
-                child_names=[],
-                child_indices=[]
-            ))
-            track_arr.attrs['signals'] = [sm.to_dict() for sm in signals_meta]
+                # write signal's metadata to signals_meta
+                signals_meta.append(AudioDataType(
+                    name=signal_name,
+                    id=signal_idx,
+                    data_type=schema.default_kinds['signal'],
+                    default_behavior=schema.default_behaviors['signal'],
+                    sample_rate=schema.sample_rate,
+                    bit_depth=schema.bit_depth,
+                    subtype=schema.subtype,
+                    track_group=schema.track_group,
+                    metadata=metadata or {},
+                    child_names=[],
+                    child_indices=[]
+                ))
+                track_arr.attrs['signals'] = [signal_meta.to_dict() for signal_meta in signals_meta]
 
-        # check audio_data length
-        audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
-        np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
-        if sample_stop is None:
-            sample_stop = schema.total_samples
-        if not audio_data.shape[0] == schema.total_samples:
-            data_pad = np.zeros((schema.total_samples,), dtype=np_dtype)
-            data_pad[start_sample:stop_sample] = audio_data
-            audio_data = data_pad
-        # write signal's audio_data to storage
-        track_arr[signal_idx] = audio_data
+            # check audio_data length
+            audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
+            np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
+            if sample_stop is None:
+                sample_stop = sample_stop if sample_stop in not None or sample_stop < schema.total_samples else schema.total_samples
+            if not audio_data.shape[0] == schema.total_samples:
+                data_pad = np.zeros((schema.total_samples,), dtype=np_dtype)
+                data_pad[start_sample:stop_sample] = audio_data[start_sample:stop_sample]
+                audio_data = data_pad
+            # write signal's audio_data to storage
+            track_arr[signal_idx] = audio_data
 
-        # rewrite track_arr to storage
-        self._wstore[path] = track_arr
+            # rewrite track_arr to storage
+            self._wstore[path] = track_arr
 
-        self._wpaths.remove(path)
+        finally:
+            # Drop our local reference so it can be freed while we move on
+            del track_arr
+            self._wpaths.remove(path)
+        import gc
+        gc.collect()
 
     def read(self, collection: str, engine: str, obj_idx: int, track_name: str, signal_idx: int) -> np.ndarray:
         """

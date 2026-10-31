@@ -186,98 +186,132 @@ class StorageEngine:
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
+            parts = [audio_data]
             for child_idx in audio_meta.child_indices:
                 child_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=child_idx)
-                audio_data = np.append(audio_data, child_data, axis=0)
+#                audio_data = np.append(audio_data, child_data, axis=0)
+                parts.append(child_data)
+        audio_data = np.concatenate(parts, axis=0)
+        parts = None
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
 
     def _traverse_track(self, collection: str, engine: str, obj_idx: int, track_name: str, unprocessed: bool) -> np.ndarray:
         audio_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}")
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_signal(collection, engine, obj_idx, track_name, child_name, unprocessed)
-                if 'audio_data' in locals():
-                    audio_data = np.append(audio_data, child_data, axis=0)
-                else:
-                    audio_data = child_data
-
-        if not 'audio_data' in locals():
-            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
+                parts.append(child)
+        if parts:
+            audio_data = np.concatenate(parts, axis=0)
+            parts = None
+        else:
+            audio_data = np.zeros((1, self.total_samples), dtype=np.float32)
+#                if 'audio_data' in locals():
+#                    audio_data = np.append(audio_data, child_data, axis=0)
+#                else:
+#                    audio_data = child_data
+#        if not 'audio_data' in locals():
+#            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
 
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
 
     def _traverse_object(self, collection: str, engine: str, obj_idx: int, unprocessed: bool) -> np.ndarray:
         audio_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}")
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_track(collection, engine, obj_idx, child_name, unprocessed)
-                if 'audio_data' in locals():
-                    audio_data = np.append(audio_data, child_data, axis=0)
-                else:
-                    audio_data = child_data
-
-        if not 'audio_data' in locals():
-            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
+                parts.append(child)
+        if parts:
+            audio_data = np.concatenate(parts, axis=0)
+            parts = None
+        else:
+            audio_data = np.zeros((1, self.total_samples), dtype=np.float32)
+#                if 'audio_data' in locals():
+#                    audio_data = np.append(audio_data, child_data, axis=0)
+#                else:
+#                    audio_data = child_data
+#        if not 'audio_data' in locals():
+#            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
 
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
 
     def _traverse_engine(self, collection: str, engine: str, unprocessed: bool) -> np.ndarray:
         audio_meta = self._backend.get_meta(path=f"/{collection}/{engine}")
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
             for child_index in audio_meta.child_indices:
                 child_data = self._traverse_object(collection, engine, child_index, unprocessed)
-                if 'audio_data' in locals():
-                    audio_data = np.append(audio_data, child_data, axis=0)
-                else:
-                    audio_data = child_data
-
-        if not 'audio_data' in locals():
-            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
+                parts.append(child)
+        if parts:
+            audio_data = np.concatenate(parts, axis=0)
+            parts = None
+        else:
+            audio_data = np.zeros((1, self.total_samples), dtype=np.float32)
+#                if 'audio_data' in locals():
+#                    audio_data = np.append(audio_data, child_data, axis=0)
+#                else:
+#                    audio_data = child_data
+#        if not 'audio_data' in locals():
+#            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
 
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
 
     def _traverse_collection(self, collection: str, unprocessed: bool) -> np.ndarray:
         audio_meta = self._backend.get_meta(path=f"/{collection}")
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_engine(collection, child_name, unprocessed)
-                if 'audio_data' in locals():
-                    audio_data = np.append(audio_data, child_data, axis=0)
-                else:
-                    audio_data = child_data
-
-        if not 'audio_data' in locals():
-            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
+                parts.append(child)
+        if parts:
+            audio_data = np.concatenate(parts, axis=0)
+            parts = None
+        else:
+            audio_data = np.zeros((1, self.total_samples), dtype=np.float32)
+#                if 'audio_data' in locals():
+#                    audio_data = np.append(audio_data, child_data, axis=0)
+#                else:
+#                    audio_data = child_data
+#        if not 'audio_data' in locals():
+#            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
 
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
 
     def _traverse_scene(self, unprocessed: bool) -> np.ndarray:
         audio_meta = self._backend.get_meta(path=f"/{collection}")
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_collection(child_name, unprocessed)
-                if 'audio_data' in locals():
-                    audio_data = np.append(audio_data, child_data, axis=0)
-                else:
-                    audio_data = child_data
-
-        if not 'audio_data' in locals():
-            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
+                parts.append(child)
+        if parts:
+            audio_data = np.concatenate(parts, axis=0)
+            parts = None
+        else:
+            audio_data = np.zeros((1, self.total_samples), dtype=np.float32)
+#                if 'audio_data' in locals():
+#                    audio_data = np.append(audio_data, child_data, axis=0)
+#                else:
+#                    audio_data = child_data
+#        if not 'audio_data' in locals():
+#            audio_data = np.zeros((1,self.total_samples), dtype=np.float32)
 
         audio_data = self._process_audio(audio_data, audio_meta, unprocessed)
         return audio_data
@@ -286,7 +320,7 @@ class StorageEngine:
         if audio_meta.default_behavior == DefaultBehavior.NONE.value:
             return
         elif audio_meta.default_behavior == DefaultBehavior.SINGLE.value:
-            return audio_data[0].reshape(1,-1)
+            return audio_data[0].copy().reshape(1,-1)
         elif audio_meta.default_behavior == DefaultBehavior.MERGE.value:
             return np.sum(audio_data, axis=0).reshape(1,-1)
         elif audio_meta.default_behavior == DefaultBehavior.MULTI.value:
