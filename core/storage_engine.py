@@ -183,11 +183,10 @@ class StorageEngine:
         audio_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", signal_name=signal_name)
         signal_idx = audio_meta.id
         audio_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=signal_idx)
-        parts = []
+        parts = [audio_data]
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:
-            parts = [audio_data]
             for child_idx in audio_meta.child_indices:
                 child_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=child_idx)
 #                audio_data = np.append(audio_data, child_data, axis=0)
