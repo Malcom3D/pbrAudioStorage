@@ -204,7 +204,7 @@ class StorageEngine:
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_signal(collection, engine, obj_idx, track_name, child_name, unprocessed)
-                parts.append(child)
+                parts.append(child_data)
         if parts:
             audio_data = np.concatenate(parts, axis=0)
             parts = None
@@ -228,7 +228,7 @@ class StorageEngine:
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_track(collection, engine, obj_idx, child_name, unprocessed)
-                parts.append(child)
+                parts.append(child_data)
         if parts:
             audio_data = np.concatenate(parts, axis=0)
             parts = None
@@ -252,7 +252,7 @@ class StorageEngine:
         if len(audio_meta.child_names) > 0:
             for child_index in audio_meta.child_indices:
                 child_data = self._traverse_object(collection, engine, child_index, unprocessed)
-                parts.append(child)
+                parts.append(child_data)
         if parts:
             audio_data = np.concatenate(parts, axis=0)
             parts = None
@@ -276,7 +276,7 @@ class StorageEngine:
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_engine(collection, child_name, unprocessed)
-                parts.append(child)
+                parts.append(child_data)
         if parts:
             audio_data = np.concatenate(parts, axis=0)
             parts = None
@@ -300,7 +300,7 @@ class StorageEngine:
         if len(audio_meta.child_names) > 0:
             for child_name in audio_meta.child_names:
                 child_data = self._traverse_collection(child_name, unprocessed)
-                parts.append(child)
+                parts.append(child_data)
         if parts:
             audio_data = np.concatenate(parts, axis=0)
             parts = None
