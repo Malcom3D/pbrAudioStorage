@@ -183,6 +183,7 @@ class StorageEngine:
         audio_meta = self._backend.get_meta(path=f"/{collection}/{engine}/{obj_idx}/{track_name}", signal_name=signal_name)
         signal_idx = audio_meta.id
         audio_data = self._backend.read(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, signal_idx=signal_idx)
+        parts = []
 
         # check for signal childs
         if len(audio_meta.child_names) > 0:

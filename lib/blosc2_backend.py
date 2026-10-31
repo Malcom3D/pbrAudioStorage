@@ -293,7 +293,8 @@ class Blosc2Backend:
             # check audio_data length
             audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
             np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
-            sample_stop = sample_stop if sample_stop is not None or sample_stop < schema.total_samples else schema.total_samples
+            if sample_stop is not None:
+                sample_stop = sample_stop if sample_stop < schema.total_samples else schema.total_samples
             if not audio_data.shape[0] == schema.total_samples:
                 data_pad = np.zeros((schema.total_samples,), dtype=np_dtype)
                 data_pad[start_sample:stop_sample] = audio_data[start_sample:stop_sample]
