@@ -293,11 +293,11 @@ class Blosc2Backend:
             # check audio_data length
             audio_data = audio_data if audio_data.ndim == 1 else audio_data.T
             np_dtype = np.float32 if schema.signal_type == "float32" else np.float64
-            if sample_stop is not None:
-                sample_stop = sample_stop if sample_stop < schema.total_samples else schema.total_samples
+            sample_stop = audio_data.shape[0] if sample_stop is None else sample_stop
+            sample_stop = sample_stop if sample_stop < schema.total_samples else schema.total_samples
             if not audio_data.shape[0] == schema.total_samples:
                 data_pad = np.zeros((schema.total_samples,), dtype=np_dtype)
-                data_pad[start_sample:stop_sample] = audio_data[start_sample:stop_sample]
+                data_pad[sample_start:sample_stop] = audio_data[sample_start:sample_stop]
                 audio_data = data_pad
             # write signal's audio_data to storage
             track_arr[signal_idx] = audio_data
