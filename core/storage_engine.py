@@ -534,6 +534,31 @@ class StorageEngine:
             props.custom["file"] = custom["file"]
             return
 
+        # --- ObjectConfig injection --------------------------------
+        if "obj_config" in custom:
+            objs_type = custom.get("objs_type", "objects")
+            obj_idx = custom.get("entity_idx")
+            objs = getattr(self.entity_manager.get("config"), objs_type, []) or []
+            for cfg_obj in objs:
+                if getattr(cfg_obj, "idx", None) == obj_idx:
+                    props.custom["obj_config"] = cfg_obj
+                    break
+            return
+
+        # --- Recursive sibling signal reference ------------------
+        # e.g. "modal_ref" -> the "rigidbody" track of the SAME object
+        if "sibling_track" in custom:
+            ref_collection = custom.get("collection", self.collection)
+            ref_engine = custom.get("engine", "rigidBodyEngine")
+            ref_obj = custom.get("entity_idx")
+            ref_track = custom["sibling_track"]
+            key = custom.get("key", "modal_ref")
+            try:
+                props.custom[key] = self.read(collection=ref_collection, engine=ref_engine, obj_idx=ref_obj, track_name=ref_track, unprocessed=False)
+            except Exception:
+                pass
+            return
+
 #    def _get_props(self, audio_meta: AudioDataType) -> List[Any]:
 #        props = []
 #        chains = audio_meta.chains
