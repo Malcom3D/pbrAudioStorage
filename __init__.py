@@ -16,7 +16,7 @@
 # along with pbrAudio.  If not, see <https://www.gnu.org/licenses/>.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Malcom3D"
 __description__ = "High performance near-infinite multitrack raw audio storage with non-destructive signal processing on a DAG."
 
@@ -45,7 +45,7 @@ __all__ = [
     "StorageEngine",
     "Blosc2Backend",
     "ZarrBackend",
-    "DagNodeNode",
+    "DagNode",
     "DagBuilder",
     "DagEvaluator",
     "StorageError",
