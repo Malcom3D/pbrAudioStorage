@@ -26,6 +26,8 @@ from ..lib.audio_data_type import AudioDataType, DataTypeKind, DefaultBehavior
 from ..lib.blosc2_backend import Blosc2Backend
 from ..lib.zarr_backend import ZarrBackend
 
+from ..utils.errors import StorageError
+
 from ..dag.dag_builder import DagBuilder
 from ..dag.dag_evaluator import DagEvaluator, Props
 

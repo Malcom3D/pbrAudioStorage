@@ -358,6 +358,9 @@ class Blosc2Backend:
         return self._wstore.get_children(path)
 
     def get_meta(self, path: str = '/', signal_name: str = None, signal_idx: int = None) -> AudioDataType:
+        # Normalize: strip trailing slash unless it's the root
+        if len(path) > 1 and path.endswith('/'):
+            path = path.rstrip('/')
         path_parts = path.strip('/').split('/')
         if len(path_parts) == 4:
             track_arr = self._wstore[path]
