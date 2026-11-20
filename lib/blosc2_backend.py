@@ -59,7 +59,7 @@ class Blosc2Backend:
             self.__dict__.update(existing.__dict__)
             return
 
-        self._wstore = self.open(self.urlpath, mode='a', cparams=cparams, dparams=dparams)
+        self._wstore = self.open(self.urlpath, mode='a', cparams=self.cparams, dparams=self.dparams)
         _BACKEND_REGISTRY[self.urlpath] = self
 
 #    def __del__(self):
