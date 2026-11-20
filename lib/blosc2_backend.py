@@ -41,6 +41,8 @@ class Blosc2Backend:
     inside a single blosc2.TreeStore with all metadata in the attrs
     """
     urlpath: str
+    cparams: blosc2.CParams = None
+    dparams: blosc2.DParams = None
     _wstore: Optional[blosc2.TreeStore] = field(default=None, init=False, repr=False)
     _wpaths: List[str] = field(default_factory=list)
     _queue: deque = field(default_factory=deque)
@@ -57,7 +59,7 @@ class Blosc2Backend:
             self.__dict__.update(existing.__dict__)
             return
 
-        self._wstore = self.open(self.urlpath, mode='a')
+        self._wstore = self.open(self.urlpath, mode='a', cparams, dparams)
         _BACKEND_REGISTRY[self.urlpath] = self
 
 #    def __del__(self):
@@ -73,7 +75,7 @@ class Blosc2Backend:
                 pass
         _BACKEND_REGISTRY.clear()
 
-    def open(self, path: str = None, cparams: blosc2.CParams = None, dparams: blosc2.DParams = None, mode: str = 'a') -> (blosc2.TreeStore, blosc2.TreeStore):
+    def open(self, path: str = None,  mode: str = 'a', cparams: blosc2.CParams = None, dparams: blosc2.DParams = None) -> (blosc2.TreeStore, blosc2.TreeStore):
         cparams = cparams or blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=1, typesize=np.dtype(np.dtype).itemsize, nthreads=16)
         dparams = dparams or blosc2.DParams(nthreads=8)
         path = os.path.abspath(path) or self.urlpath

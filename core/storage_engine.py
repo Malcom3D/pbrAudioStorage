@@ -70,6 +70,10 @@ class StorageEngine:
         sfps = ( fps / fps_base ) * subframes # subframes per seconds
         self.total_samples = int(config.system.total_frames * sample_rate / sfps)
 
+        if config.storage.blosc2_codec == "LZ4":
+            cparams = blosc2.CParams(codec=blosc2.Codec.LZ4, clevel=config.storage.blosc2_clevel, typesize=np.dtype(np.dtype).itemsize, nthreads=config.storage.blosc2_cparams_threads)
+        dparams = blosc2.DParams(nthreads=config.storage.blosc2_dparams_threads)
+
         # resolve url
         if self.urlpath is None:
             self.urlpath = config.storage.root_path or f"{config.system.cache_path}/storage"
@@ -82,7 +86,7 @@ class StorageEngine:
         cls = _BACKENDS[self.backend]
         if cls is None:
             raise StorageError(f"unknown backend {self.backend!r}; known: {sorted(_BACKENDS)}")
-        self._backend = cls(urlpath=self.urlpath)
+        self._backend = cls(urlpath=self.urlpath, cparams=cparams, dparams=dparams)
 
     def register(self, collection: str, objs_type: str, engine: str, track_group: str, track_names: Sequence[str], signal_type: str, default_behaviors: Dict[str, str], default_kinds: Dict[str, str], total_samples: int = None, sample_rate: int = None, bit_depth: int = None, subtype: str = None, metadata: Optional[Dict[str, Any]] = None):
         """
@@ -688,7 +692,6 @@ class StorageEngine:
         # Backend-specific write; Blosc2Backend supports this natively.
         return self._backend.set_chains(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, chains=chains, signal_names=signal_names)
 
-    def clear_chains(self, collection: str, engine: str,
-                     obj_idx: int, track_name: str) -> int:
+    def clear_chains(self, collection: str, engine: str, obj_idx: int, track_name: str) -> int:
         """Convenience wrapper: remove all chains from a track's signals."""
         return self.set_chains(collection=collection, engine=engine, obj_idx=obj_idx, track_name=track_name, chains=None)
