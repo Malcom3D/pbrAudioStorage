@@ -622,8 +622,7 @@ class StorageEngine:
     # ------------------------------------------------------------------
     # Metadata-only helpers (used by postProcess and similar tools)
     # ------------------------------------------------------------------
-    def _signal_node_exists(self, collection: str, engine: str,
-                            obj_idx: int, track_name: str) -> bool:
+    def _signal_node_exists(self, collection: str, engine: str, obj_idx: int, track_name: str) -> bool:
         """Return True if the track node is materialized in the backend."""
         path = f"/{collection}/{engine}/{obj_idx}/{track_name}"
         try:
